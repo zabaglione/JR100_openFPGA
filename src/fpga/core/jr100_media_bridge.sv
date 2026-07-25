@@ -142,6 +142,13 @@ module jr100_media_bridge #(
     reg         wbuf_wr;
     reg  [6:0]  wbuf_waddr;
     reg  [31:0] wbuf_wdata;
+    // The shift register keeps advancing on the cycle the write strobe is
+    // registered, so the BRAM would otherwise sample a word shifted one
+    // byte too far (bytes 4w+1..4w+4 instead of 4w..4w+3 - this corrupted
+    // every saved sector and showed up as CHECK SUM ERROR on tape loads).
+    // The strobe cycle therefore snapshots the pre-shift word here, and
+    // the BRAM writes from the snapshot.
+    reg  [31:0] wbuf_hold;
 
 bram_block_dp #(
     .DATA ( 32 ),
@@ -156,7 +163,7 @@ bram_block_dp #(
     .b_clk  ( clk ),
     .b_wr   ( wbuf_wr ),
     .b_addr ( wbuf_waddr ),
-    .b_din  ( wbuf_wdata ),
+    .b_din  ( wbuf_hold ),
     .b_dout (  )
 );
 
@@ -164,7 +171,11 @@ bram_block_dp #(
     // Read chunk buffer (host -> machine), filled by bridge writes at
     // 0x5xxxxxxx during a target_dataslot_read
     // ------------------------------------------------------------------
-    reg  [6:0]  rbuf_raddr;
+    // The read address is combinational from the sweep counter: with a
+    // registered address the BRAM path is two cycles deep and every word's
+    // first byte was served from the previous word (caught by the Python
+    // register-timing model in tools/verify_media_sweeps.py).
+    wire [6:0]  rbuf_raddr = sweep[8:2];
     wire [31:0] rbuf_q;
 
 bram_block_dp #(
@@ -272,6 +283,7 @@ bram_block_dp #(
                     if (sweep[1:0] == 2'd1 && sweep >= 10'd5) begin
                         wbuf_wr    <= 1'b1;
                         wbuf_waddr <= sweep[8:2] - 7'd1;
+                        wbuf_hold  <= wbuf_wdata;   // pre-shift word 4w..4w+3
                     end
                     if (sweep == 10'd513)
                         mstate <= MS_REQ;
@@ -302,17 +314,15 @@ bram_block_dp #(
                 MS_R_WAIT: begin
                     if (done_q != done_t_s) begin
                         sweep      <= 10'd0;
-                        rbuf_raddr <= 7'd0;
                         mstate     <= MS_R_STREAM;
                     end
                 end
 
-                // At cycle s the word address for byte s is presented; the
-                // BRAM output is a cycle behind, so cycle s strobes byte s-1
-                // out of rbuf_q with a big-endian lane mux.
+                // rbuf_raddr = sweep[8:2] combinationally, so rbuf_q during
+                // cycle s holds the word for byte s-1; the lane mux picks
+                // the big-endian byte and strobes it out.
                 MS_R_STREAM: begin
                     sweep      <= sweep + 10'd1;
-                    rbuf_raddr <= sweep[8:2];
                     if (sweep != 10'd0) begin
                         buff_addr <= sweep[8:0] - 9'd1;
                         case (sweep[1:0] - 2'd1)          // (s-1) & 3
