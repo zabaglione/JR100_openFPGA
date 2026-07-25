@@ -575,8 +575,96 @@ data_loader #(
     .write_data           ( rom_wr_data )
 );
 
+// The machine is held in reset only while the ROM slot itself is being
+// written. Program slots (.prg/.bas) load into the RUNNING machine - the
+// PROG container patches BASIC's workspace pointers, so resetting would
+// destroy exactly the state it is loading into (jr100_top freezes the CPU
+// through its prg/bas ports instead).
+    reg     rom_slot_active_74 = 1'b1;   // power-on counts as the ROM phase
+always @(posedge clk_74a) begin
+    if (dataslot_requestwrite)
+        rom_slot_active_74 <= (dataslot_requestwrite_id == 16'd0);
+end
+
     wire    downloading_s;
-synch_3 s_downloading (~dataslot_allcomplete, downloading_s, clk_sys);
+synch_3 s_downloading (~dataslot_allcomplete & rom_slot_active_74,
+                       downloading_s, clk_sys);
+
+// .prg / .bas slots: host-pushed into a replay buffer, then fed to the
+// machine at its own pace (the bridge has no backpressure; the loaders do).
+    wire        prgl_wr,  basl_wr;
+    wire [27:0] prgl_addr, basl_addr;
+    wire [7:0]  prgl_data, basl_data;
+
+data_loader #(
+    .ADDRESS_MASK_UPPER_4       ( 4'h1 ),
+    .ADDRESS_SIZE               ( 28 ),
+    .WRITE_MEM_CLOCK_DELAY      ( 4 ),
+    .WRITE_MEM_EN_CYCLE_LENGTH  ( 1 ),
+    .OUTPUT_WORD_SIZE           ( 1 )
+) prg_slot_loader (
+    .clk_74a              ( clk_74a ),
+    .clk_memory           ( clk_sys ),
+    .bridge_wr            ( bridge_wr ),
+    .bridge_endian_little ( bridge_endian_little ),
+    .bridge_addr          ( bridge_addr ),
+    .bridge_wr_data       ( bridge_wr_data ),
+    .write_en             ( prgl_wr ),
+    .write_addr           ( prgl_addr ),
+    .write_data           ( prgl_data )
+);
+
+data_loader #(
+    .ADDRESS_MASK_UPPER_4       ( 4'h2 ),
+    .ADDRESS_SIZE               ( 28 ),
+    .WRITE_MEM_CLOCK_DELAY      ( 4 ),
+    .WRITE_MEM_EN_CYCLE_LENGTH  ( 1 ),
+    .OUTPUT_WORD_SIZE           ( 1 )
+) bas_slot_loader (
+    .clk_74a              ( clk_74a ),
+    .clk_memory           ( clk_sys ),
+    .bridge_wr            ( bridge_wr ),
+    .bridge_endian_little ( bridge_endian_little ),
+    .bridge_addr          ( bridge_addr ),
+    .bridge_wr_data       ( bridge_wr_data ),
+    .write_en             ( basl_wr ),
+    .write_addr           ( basl_addr ),
+    .write_data           ( basl_data )
+);
+
+    wire        prg_download, prg_wr_s, prg_wait;
+    wire        bas_download, bas_wr_s, bas_wait;
+    wire [7:0]  prg_data, bas_data;
+
+jr100_prog_feeder #(
+    .SLOT_PRG ( 16'd1 ),
+    .SLOT_BAS ( 16'd2 )
+) prog_feeder (
+    .clk       ( clk_sys ),
+    .rst       ( rst_sys ),
+
+    .clk_74a                    ( clk_74a ),
+    .dataslot_requestwrite      ( dataslot_requestwrite ),
+    .dataslot_requestwrite_id   ( dataslot_requestwrite_id ),
+    .dataslot_requestwrite_size ( dataslot_requestwrite_size ),
+    .dataslot_allcomplete       ( dataslot_allcomplete ),
+
+    .buf_wr    ( prgl_wr | basl_wr ),
+    .buf_addr  ( prgl_wr ? prgl_addr[15:0] : basl_addr[15:0] ),
+    .buf_data  ( prgl_wr ? prgl_data : basl_data ),
+
+    .prg_download ( prg_download ),
+    .prg_wr       ( prg_wr_s ),
+    .prg_data     ( prg_data ),
+    .prg_wait     ( prg_wait ),
+
+    .bas_download ( bas_download ),
+    .bas_wr       ( bas_wr_s ),
+    .bas_data     ( bas_data ),
+    .bas_wait     ( bas_wait ),
+
+    .feeding      (  )
+);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -636,15 +724,15 @@ jr100_top jr100 (
     .loader_addr    ( rom_wr_addr[12:0] ),
     .loader_data    ( rom_wr_data ),
 
-    // .prg / .bas loaders - P5-1
-    .prg_download   ( 1'b0 ),
-    .prg_wr         ( 1'b0 ),
-    .prg_data       ( 8'd0 ),
-    .prg_wait       (  ),
-    .bas_download   ( 1'b0 ),
-    .bas_wr         ( 1'b0 ),
-    .bas_data       ( 8'd0 ),
-    .bas_wait       (  ),
+    // .prg / .bas program streams, replayed from the feeder buffer
+    .prg_download   ( prg_download ),
+    .prg_wr         ( prg_wr_s ),
+    .prg_data       ( prg_data ),
+    .prg_wait       ( prg_wait ),
+    .bas_download   ( bas_download ),
+    .bas_wr         ( bas_wr_s ),
+    .bas_data       ( bas_data ),
+    .bas_wait       ( bas_wait ),
 
     // BASIC save - P6-1
     .save_req       ( 1'b0 ),
@@ -657,7 +745,9 @@ jr100_top jr100 (
     .sd_buff_addr   ( 9'd0 ),
     .sd_buff_din    (  ),
 
-    .autostart_en   ( 1'b0 ),
+    // types RUN (or the USR hint) after a program loads; becomes an
+    // interact.json option in P7
+    .autostart_en   ( 1'b1 ),
 
     .key_matrix     ( key_matrix ),
     .joy_status     ( joy_status ),

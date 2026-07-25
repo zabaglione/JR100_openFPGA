@@ -11,6 +11,24 @@
         "extensions": ["rom"],
         "size_exact": "0x2000",
         "address": "0x00000000"
+      },
+      {
+        "name": "PRG Program",
+        "id": 1,
+        "required": false,
+        "parameters": "0x9",
+        "extensions": ["prg"],
+        "size_maximum": "0x10000",
+        "address": "0x10000000"
+      },
+      {
+        "name": "BASIC Text",
+        "id": 2,
+        "required": false,
+        "parameters": "0x9",
+        "extensions": ["bas", "txt"],
+        "size_maximum": "0x10000",
+        "address": "0x20000000"
       }
     ]
   }
