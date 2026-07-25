@@ -1,6 +1,42 @@
 {
   "input": {
     "magic": "APF_VER_1",
-    "controllers": []
+    "controllers": [
+      {
+        "type": "default",
+        "mappings": [
+          {
+            "id": 4,
+            "name": "Fire / VKB Key",
+            "key": "pad_btn_a"
+          },
+          {
+            "id": 5,
+            "name": "VKB Space",
+            "key": "pad_btn_b"
+          },
+          {
+            "id": 6,
+            "name": "VKB Return",
+            "key": "pad_btn_x"
+          },
+          {
+            "id": 8,
+            "name": "VKB Shift",
+            "key": "pad_trig_l"
+          },
+          {
+            "id": 9,
+            "name": "VKB Ctrl",
+            "key": "pad_trig_r"
+          },
+          {
+            "id": 14,
+            "name": "Virtual Keyboard",
+            "key": "pad_btn_select"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -580,6 +580,37 @@ synch_3 s_downloading (~dataslot_allcomplete, downloading_s, clk_sys);
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Inputs: pad, dock USB keyboard, virtual keyboard
+////////////////////////////////////////////////////////////////////////////////
+
+    wire [44:0] key_matrix;
+    wire [7:0]  joy_status;
+    wire        vkb_active, vkb_pressed, vkb_shift, vkb_ctl;
+    wire [2:0]  vkb_row;
+    wire [3:0]  vkb_col;
+
+jr100_pocket_input pocket_input (
+    .clk         ( clk_sys ),
+    .rst         ( rst_sys ),
+
+    .cont1_key   ( cont1_key ),
+    .cont3_key   ( cont3_key ),
+    .cont3_joy   ( cont3_joy ),
+    .cont3_trig  ( cont3_trig ),
+
+    .key_matrix  ( key_matrix ),
+    .joy_status  ( joy_status ),
+
+    .vkb_active  ( vkb_active ),
+    .vkb_row     ( vkb_row ),
+    .vkb_col     ( vkb_col ),
+    .vkb_pressed ( vkb_pressed ),
+    .vkb_shift   ( vkb_shift ),
+    .vkb_ctl     ( vkb_ctl )
+);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // JR-100 machine
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -626,9 +657,8 @@ jr100_top jr100 (
 
     .autostart_en   ( 1'b0 ),
 
-    // Inputs - P3
-    .key_matrix     ( 45'd0 ),
-    .joy_status     ( 8'd0 ),
+    .key_matrix     ( key_matrix ),
+    .joy_status     ( joy_status ),
     .ext_ram_en     ( 1'b0 ),
 
     .pb7            (  ),
@@ -816,11 +846,44 @@ bram_block_dp #(
     wire in_marker = in_bot && (vx >= {1'b0, marker_x}) &&
                                (vx <  {1'b0, marker_x} + 10'd16);
 
+// Virtual keyboard overlay. Its state lives in the machine domain and only
+// changes at human speed, so plain synchronisers per field are enough - the
+// worst case is one frame of mixed cursor position.
+    wire        vkb_active_v, vkb_pressed_v, vkb_shift_v, vkb_ctl_v;
+    wire [2:0]  vkb_row_v;
+    wire [3:0]  vkb_col_v;
+synch_3         s_vkb_a (vkb_active,  vkb_active_v,  clk_vid);
+synch_3         s_vkb_p (vkb_pressed, vkb_pressed_v, clk_vid);
+synch_3         s_vkb_s (vkb_shift,   vkb_shift_v,   clk_vid);
+synch_3         s_vkb_c (vkb_ctl,     vkb_ctl_v,     clk_vid);
+synch_3 #(3)    s_vkb_r (vkb_row,     vkb_row_v,     clk_vid);
+synch_3 #(4)    s_vkb_l (vkb_col,     vkb_col_v,     clk_vid);
+
+    wire        ovl_hit;
+    wire [23:0] ovl_rgb;
+
+jr100_vkb_overlay vkb_overlay (
+    .vx         ( vx ),
+    .vy         ( vy ),
+    .in_active  ( in_active ),
+
+    .active     ( vkb_active_v ),
+    .cur_row    ( vkb_row_v ),
+    .cur_col    ( vkb_col_v ),
+    .pressed    ( vkb_pressed_v ),
+    .shift_held ( vkb_shift_v ),
+    .ctl_held   ( vkb_ctl_v ),
+
+    .hit        ( ovl_hit ),
+    .rgb        ( ovl_rgb )
+);
+
 // The display colour is selectable on MiSTer; white until the interact.json
 // plumbing lands in P7-1.
     wire [23:0] fb_rgb   = fb_pix ? 24'hFFFFFF : 24'h000000;
 
     wire [23:0] scan_rgb = !in_active     ? 24'h000000 :
+                           ovl_hit        ? ovl_rgb :
                            in_fb          ? fb_rgb :
                            !BRINGUP_BANDS ? 24'h000000 :
                            in_ring        ? 24'hFF8000 :
