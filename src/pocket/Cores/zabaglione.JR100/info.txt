@@ -1,0 +1,11 @@
+JR-100 for Analogue Pocket by zabaglione.
+
+The National (Matsushita) JR-100, released in Japan in 1981. An MB8861H CPU
+(MC6800-compatible with five extra instructions), 16 KiB of RAM, an 8 KiB
+BASIC ROM and a 32x24 character display with user-definable glyphs.
+
+Ported from the JR100_MiSTer core, which is verified against the pyjr100emu
+reference emulator by instruction-boundary lockstep.
+
+The BASIC ROM is not included. Place your own dump at
+Assets/jr100/common/boot.rom (8 KiB: character ROM followed by BASIC ROM).

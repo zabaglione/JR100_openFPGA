@@ -2,8 +2,10 @@
   "core": {
     "magic": "APF_VER_1",
     "metadata": {
-      "platform_ids": ["jr100"],
-      "shortname": "JR-100",
+      "platform_ids": [
+        "jr100"
+      ],
+      "shortname": "JR100",
       "description": "National/Matsushita JR-100 (1981) for Analogue Pocket",
       "author": "zabaglione",
       "url": "https://github.com/zabaglione/JR100_openFPGA",
@@ -12,7 +14,7 @@
     },
     "framework": {
       "target_product": "Analogue Pocket",
-      "version_required": "2.2",
+      "version_required": "1.1",
       "sleep_supported": false,
       "dock": {
         "supported": true,
