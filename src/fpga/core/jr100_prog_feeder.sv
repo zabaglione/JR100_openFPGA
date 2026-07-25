@@ -28,6 +28,7 @@ module jr100_prog_feeder #(
 ) (
     input  wire        clk,           // machine clock
     input  wire        rst,
+    input  wire        machine_running,  // machine out of reset and ROM loaded
 
     // slot bookkeeping, clk_74a domain (synchronised here)
     input  wire        clk_74a,
@@ -112,11 +113,27 @@ bram_block_dp #(
     localparam [2:0] ST_STROBE = 3'd3;   // one-cycle wr pulse
     localparam [2:0] ST_GAP    = 3'd4;   // honour wait before the next byte
     localparam [2:0] ST_TAIL   = 3'd5;   // deassert download after the end
+    localparam [2:0] ST_HOLD   = 3'd6;   // wait for the ROM to finish booting
 
     reg [2:0]  state = ST_IDLE;
     reg        to_bas;                   // replay target
     reg [16:0] remaining;
     reg [3:0]  tail_cnt;
+
+    // Boot hold-off. When the Pocket relaunches the core it re-pushes the
+    // remembered slot files during startup, so a program can arrive while
+    // the ROM is still cold-booting; the autotype then fires before the
+    // input loop exists and the leading keystrokes are swallowed (seen on
+    // device as "($D00)" instead of "A=USR($0D00)"). Replay therefore
+    // waits until the machine has been running ~2.3 s; a manual load on a
+    // long-running machine passes through with no delay.
+    localparam [27:0] BOOT_HOLDOFF = 28'd134_000_000;
+    reg [27:0] run_cnt = 28'd0;
+    wire       boot_settled = (run_cnt >= BOOT_HOLDOFF);
+    always @(posedge clk) begin
+        if (!machine_running)      run_cnt <= 28'd0;
+        else if (!boot_settled)    run_cnt <= run_cnt + 28'd1;
+    end
 
     wire       cur_wait = to_bas ? bas_wait : prg_wait;
 
@@ -153,11 +170,16 @@ bram_block_dp #(
                         rd_addr   <= 16'd0;
                         if (!is_prog_s || req_size_74 == 32'd0)
                             state <= ST_IDLE;
-                        else begin
-                            state <= ST_FETCH;
-                            if (req_id_74 == SLOT_BAS) bas_download <= 1'b1;
-                            else                       prg_download <= 1'b1;
-                        end
+                        else
+                            state <= ST_HOLD;
+                    end
+                end
+
+                ST_HOLD: begin
+                    if (boot_settled) begin
+                        state <= ST_FETCH;
+                        if (to_bas) bas_download <= 1'b1;
+                        else        prg_download <= 1'b1;
                     end
                 end
 

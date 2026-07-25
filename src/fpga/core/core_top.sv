@@ -637,6 +637,7 @@ jr100_prog_feeder #(
 ) prog_feeder (
     .clk       ( clk_sys ),
     .rst       ( rst_sys ),
+    .machine_running ( ~(machine_rst | downloading_s) ),
 
     .clk_74a                    ( clk_74a ),
     .dataslot_requestwrite      ( dataslot_requestwrite ),
