@@ -681,7 +681,7 @@ jr100_prog_feeder #(
 // come up clean whenever the machine itself restarts.
 jr100_pocket_input pocket_input (
     .clk         ( clk_sys ),
-    .rst         ( rst_sys | downloading_s ),
+    .rst         ( machine_rst | downloading_s ),
 
     .cont1_key   ( cont1_key ),
     .cont3_key   ( cont3_key ),
@@ -715,7 +715,7 @@ jr100_pocket_input pocket_input (
 
 jr100_top jr100 (
     .clk            ( clk_sys ),
-    .rst            ( rst_sys ),
+    .rst            ( machine_rst ),
     .downloading    ( downloading_s ),
     .cpu_hold       ( 1'b0 ),
 
@@ -734,8 +734,8 @@ jr100_top jr100 (
     .bas_data       ( bas_data ),
     .bas_wait       ( bas_wait ),
 
-    // BASIC save - P6-1
-    .save_req       ( 1'b0 ),
+    // BASIC save (bridge write-back lands in P6-1)
+    .save_req       ( save_pulse ),
     .img_mounted    ( 1'b0 ),
     .img_readonly   ( 1'b0 ),
     .img_size       ( 64'd0 ),
@@ -745,19 +745,17 @@ jr100_top jr100 (
     .sd_buff_addr   ( 9'd0 ),
     .sd_buff_din    (  ),
 
-    // types RUN (or the USR hint) after a program loads; becomes an
-    // interact.json option in P7
-    .autostart_en   ( 1'b1 ),
+    .autostart_en   ( cfg_autostart_s ),
 
     .key_matrix     ( key_matrix ),
     .joy_status     ( joy_status ),
-    .ext_ram_en     ( 1'b0 ),
+    .ext_ram_en     ( cfg_extram_s ),
 
     .pb7            (  ),
     .audio          ( jr_audio ),
 
-    // Virtual cassette - P6-2
-    .tape_play      ( 1'b0 ),
+    // Virtual cassette (bridge transfer lands in P6-2)
+    .tape_play      ( tape_pulse ),
     .tape_mounted   ( 1'b0 ),
     .tape_readonly  ( 1'b0 ),
     .tape_size      ( 64'd0 ),
@@ -809,6 +807,63 @@ jr100_top jr100 (
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Core settings and actions (interact.json), bridge writes at 0x7xxxxxxx.
+//
+// Values are quasi-static (menu-driven), so they cross domains through
+// plain synchronisers; actions are write-strobes turned into toggles here
+// and edge-detected pulses on the far side.
+////////////////////////////////////////////////////////////////////////////////
+
+    reg  [2:0] cfg_color_74     = 3'd0;   // display colour (list)
+    reg        cfg_autostart_74 = 1'b1;   // type RUN / USR hint after loads
+    reg        cfg_extram_74    = 1'b0;   // 16 KiB extended RAM (needs reset)
+    reg        act_reset_74     = 1'b0;   // toggles, one flip per action
+    reg        act_save_74      = 1'b0;
+    reg        act_tape_74      = 1'b0;
+
+always @(posedge clk_74a) begin
+    if (bridge_wr) begin
+        case (bridge_addr)
+            32'h70000000: cfg_color_74     <= bridge_wr_data[2:0];
+            32'h70000004: cfg_autostart_74 <= bridge_wr_data[0];
+            32'h70000008: cfg_extram_74    <= bridge_wr_data[0];
+            32'h70000010: act_reset_74     <= ~act_reset_74;
+            32'h70000014: act_save_74      <= ~act_save_74;
+            32'h70000018: act_tape_74      <= ~act_tape_74;
+            default: ;
+        endcase
+    end
+end
+
+    wire       cfg_autostart_s, cfg_extram_s;
+    wire       act_reset_t, act_save_t, act_tape_t;
+synch_3 s_cfg_auto (cfg_autostart_74, cfg_autostart_s, clk_sys);
+synch_3 s_cfg_xram (cfg_extram_74,    cfg_extram_s,    clk_sys);
+synch_3 s_act_rst  (act_reset_74,     act_reset_t,     clk_sys);
+synch_3 s_act_save (act_save_74,      act_save_t,      clk_sys);
+synch_3 s_act_tape (act_tape_74,      act_tape_t,      clk_sys);
+
+    reg  act_reset_q, act_save_q, act_tape_q;
+    wire reset_pulse = act_reset_t ^ act_reset_q;
+    wire save_pulse  = act_save_t  ^ act_save_q;
+    wire tape_pulse  = act_tape_t  ^ act_tape_q;
+always @(posedge clk_sys) begin
+    act_reset_q <= act_reset_t;
+    act_save_q  <= act_save_t;
+    act_tape_q  <= act_tape_t;
+end
+
+// A user reset restarts the machine (and everything scoped to it) without
+// reloading the ROM. Stretch it so the whole machine sees it.
+    reg [7:0] user_rst_cnt = 8'd0;
+always @(posedge clk_sys) begin
+    if (reset_pulse)            user_rst_cnt <= 8'hFF;
+    else if (user_rst_cnt != 0) user_rst_cnt <= user_rst_cnt - 8'd1;
+end
+    wire machine_rst = rst_sys | (user_rst_cnt != 8'd0);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // GRAPH-mode flag, snooped from the machine itself.
 //
 // The ROM keeps its GRAPH-mode state in work RAM at 0x0014 (0x00 normal,
@@ -827,7 +882,7 @@ jr100_top jr100 (
 
     reg         graph_flag = 1'b0;
 always @(posedge clk_sys) begin
-    if (rst_sys | downloading_s)
+    if (machine_rst | downloading_s)
         graph_flag <= 1'b0;
     else if (bus_we && (bus_addr == GRAPH_FLAG_ADDR))
         graph_flag <= (bus_wdata != 8'h00);
@@ -1019,9 +1074,27 @@ jr100_vkb_overlay vkb_overlay (
     .rgb        ( ovl_rgb )
 );
 
-// The display colour is selectable on MiSTer; white until the interact.json
-// plumbing lands in P7-1.
-    wire [23:0] fb_rgb   = fb_pix ? 24'hFFFFFF : 24'h000000;
+// Display colour: classic monochrome-monitor phosphors, same set as the
+// MiSTer OSD. The JR-100's optional dedicated monitor (TR-120MIC) was a
+// green display.
+    wire [2:0]  cfg_color_v;
+synch_3 #(3) s_cfg_col (cfg_color_74, cfg_color_v, clk_vid);
+
+    reg [23:0] fg_color;
+always @(*) begin
+    case (cfg_color_v)
+        3'd0: fg_color = 24'hFFFFFF;   // White
+        3'd1: fg_color = 24'h33FF33;   // Green (P1)
+        3'd2: fg_color = 24'hFFB000;   // Amber (P3)
+        3'd3: fg_color = 24'h66FFFF;   // Cyan
+        3'd4: fg_color = 24'hFF8020;   // Orange
+        3'd5: fg_color = 24'h99BBFF;   // Blue
+        3'd6: fg_color = 24'hFFE8C8;   // Paper
+        default: fg_color = 24'hCCFFCC; // Mint
+    endcase
+end
+
+    wire [23:0] fb_rgb   = fb_pix ? fg_color : 24'h000000;
 
     wire [23:0] scan_rgb = !in_active     ? 24'h000000 :
                            ovl_hit        ? ovl_rgb :
