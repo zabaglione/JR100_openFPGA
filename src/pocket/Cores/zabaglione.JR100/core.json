@@ -6,7 +6,7 @@
       "shortname": "JR-100",
       "description": "National/Matsushita JR-100 (1981) for Analogue Pocket",
       "author": "zabaglione",
-      "url": "https://github.com/zabaglione/JR100_MiSTer",
+      "url": "https://github.com/zabaglione/JR100_openFPGA",
       "version": "0.0.1",
       "date_release": "2026-07-25"
     },
