@@ -729,9 +729,16 @@ end
     wire [23:0] pattern_rgb = in_marker ? 24'hFFFFFF :
                               in_border ? 24'hFF8000 : bar_rgb;
 
-// JR-100 picture. The display colour is selectable on MiSTer; white until the
-// interact.json plumbing lands in P7-1.
-    wire [23:0] jr100_rgb = vid_pixel ? 24'hFFFFFF : 24'h000000;
+// JR-100 picture over the bring-up background. The display colour is
+// selectable on MiSTer; white until the interact.json plumbing lands in P7-1.
+//
+// The machine's own pixel has to stay in the visible path even while the
+// pattern is up: with the pattern simply overriding it, vid_pixel became dead
+// logic and Quartus removed the CPU, the VIA and every BRAM along with it -
+// the first build fitted in 435 ALMs and 8 Kbit, the same as an empty core.
+    wire [23:0] active_rgb = vid_pixel       ? 24'hFFFFFF :
+                             BRINGUP_PATTERN ? pattern_rgb :
+                                               24'h000000;
 
     reg [23:0]  vidout_rgb = 24'd0;
     reg         vidout_de  = 1'b0;
@@ -745,9 +752,7 @@ always @(posedge clk_sys) begin
         vidout_vs  <= 1'b0;
     end else if (cen_pix) begin
         vidout_de  <= vid_de;
-        vidout_rgb <= !vid_de              ? 24'h000000 :
-                      BRINGUP_PATTERN      ? pattern_rgb :
-                                             jr100_rgb;
+        vidout_rgb <= vid_de ? active_rgb : 24'h000000;
 
         // Single-cycle strobes. VS marks the top-left of the frame; HS follows
         // a few dots later so the two never coincide.
