@@ -1,0 +1,75 @@
+# Build the Analogue Pocket bitstream with Quartus 18.1 in a container.
+#
+# This is the primary build path. Local builds on Apple Silicon work
+# (scripts/build_core.sh) but run under x86 emulation and are far too slow
+# for iteration, so CI does the real compiles.
+#
+# Disk note: the raetro/quartus:18.1 image is several GB; the cleanup step
+# frees preinstalled toolchains so the pull fits comfortably.
+
+name: build-core
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'src/fpga/**'
+      - 'src/pocket/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/build-core.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bitstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/.ghcup
+          df -h /
+
+      - name: Pull Quartus image
+        run: docker pull docker.io/raetro/quartus:18.1
+
+      - name: Compile
+        run: CONTAINER_RUNTIME=docker scripts/build_core.sh ap_core
+
+      - name: Stage the SD-card package
+        run: make package
+
+      - name: Report resource usage
+        run: |
+          echo "## Build summary" >> "$GITHUB_STEP_SUMMARY"
+          for f in build/output_files/*.summary; do
+            echo "### $(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload SD-card package
+        uses: actions/upload-artifact@v4
+        with:
+          name: JR100-pocket-package
+          path: build/package/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload build reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: JR100-build-reports
+          path: |
+            build/output_files/*.summary
+            build/output_files/*.rpt
+          retention-days: 30
+          if-no-files-found: warn

@@ -21,6 +21,7 @@ MiSTer 向けに完成している JR-100 コアを Analogue Pocket で動かす
 |---|---|
 | FPGA | Cyclone V `5CEBA4F23C8`（49,000 LE = 18,480 ALM、BRAM 約 3,383 Kbit） |
 | Quartus | Prime **18.1.1 Lite**（コンテナ `raetro/quartus:18.1`） |
+| ビルド経路 | **GitHub Actions が主**。ローカル（Apple Silicon）は x86 エミュレーションで実用速度が出ないため最小確認のみ |
 | 基準クロック | `clk_74a` / `clk_74b` = 74.25 MHz（相互に位相非同期） |
 | 外部メモリ | SDRAM 512Mbit / PSRAM 64Mbit×2 / SRAM 1Mbit（**本コアでは未使用**、全て tie-off） |
 | 映像 | `video_rgb[23:0]` + `video_de` / `video_hs` / `video_vs` / `video_skip`、`video_rgb_clock` と `video_rgb_clock_90` |
@@ -96,7 +97,16 @@ claudedocs/        調査レポート
 | [agg23/analogue-pocket-utils](https://github.com/agg23/analogue-pocket-utils) | `sound_i2s.sv` / `sync_fifo.sv` / データローダ、wiki |
 | [Analogue Developer Docs](https://www.analogue.co/developer/docs/overview) | JSON 定義の正式仕様 |
 
-## 7. 検証方針
+## 7. リポジトリ運用
+
+このリポジトリは**公開前提**。作業ディレクトリは常に公開可能な状態に保つ。
+
+- ROM・実行イメージ・個人データを絶対にコミットしない（`.gitignore` で `*.rom` `*.prg` `*.bas` `*.cmt` を除外済み）
+- ビルド生成物は `build/` `dist/` に閉じ込め、コミットしない
+- 取り込んだ第三者コードは出典と原著者をファイル冒頭に明記する
+- コミットは意味のある単位で区切り、途中の壊れた状態を main に残さない
+
+## 8. 検証方針
 
 - **移植元との等価性**: JR-100 本体 RTL は改変しないので、MiSTer 版で通っているロックステップ検証を再実施しない。
   改変した場合のみ移植元のテストを回す
@@ -104,7 +114,7 @@ claudedocs/        調査レポート
 - **合成レポートの確認**: ビルドごとに ALM / BRAM 使用率と timing slack を記録する。
   5CEBA4 は MiSTer の DE10-Nano より小さいので、リソース逼迫を早期に検知する
 
-## 8. ライセンス
+## 9. ライセンス
 
 - 本コア: **GPL-2.0-or-later**（移植元を継承）
 - `src/fpga/apf/` は Analogue 提供コード。同梱条件に従う

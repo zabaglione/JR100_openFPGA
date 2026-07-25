@@ -26,7 +26,7 @@
 |---|---|---|---|
 | P0-1 | リポジトリ足場 | 🔄 | ディレクトリ構成 / .gitignore / README / AGENTS.md / PLAN.md |
 | P0-2 | core-template 取り込み | ⬜ | `src/fpga/apf/` 一式 + `core_bridge_cmd.v` + qpf/qsf/sdc、device `5CEBA4F23C8` |
-| P0-3 | Quartus 18.1 ビルド | ⬜ | `scripts/build_core.sh` でテンプレートが合成でき、`bitstream.rbf_r` が生成される |
+| P0-3 | Quartus 18.1 ビルド（**CI 主体**） | 🔄 | GitHub Actions `build-core` でテンプレートが合成でき、`bitstream.rbf_r` と SD パッケージがアーティファクトとして出る |
 | P0-4 | パッケージング + 実機起動 | 🧑 | Pocket でテンプレートコアが起動する |
 
 ### P1 — 映像
@@ -102,3 +102,5 @@
 | 2026-07-25 | `src/fpga/jr100/` は原則無改変 | 移植元のロックステップ検証結果を再利用するため |
 | 2026-07-25 | `version_required` は 2.2 | 実機 FW は 2.6 だが、2.3 以降に本コアが必要とする機能追加は無い |
 | 2026-07-25 | 外部メモリ（SDRAM/PSRAM/SRAM）は未使用 | JR-100 の全メモリは 42.25 KiB で BRAM に収まる |
+| 2026-07-25 | **ビルドは GitHub Actions を主経路とする** | Apple Silicon 上のコンテナ実行は x86 エミュレーションで実用速度が出ない（MiSTer 版開発時の実測）。ローカルは最小確認用に残す |
+| 2026-07-25 | プラットフォーム画像（`_images/*.bin`）は P7 まで後回し | 521×165 / 2 バイトずつだが上位バイトが常に 0 で、PocketCPC 同梱の PNG と bin の内容が一致せず符号化を特定できなかった。装飾要素なので後段で扱う |

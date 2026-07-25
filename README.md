@@ -26,10 +26,16 @@ MiSTer 版は参照エミュレータ [pyjr100emu](https://github.com/zabaglione
 
 ## ビルド
 
-Quartus Prime 18.1.1 Lite をコンテナで実行します（macOS / Apple Silicon でも動作）。
+**GitHub Actions（`build-core` ワークフロー）が主のビルド経路です。** Quartus Prime 18.1.1 Lite を
+コンテナで実行し、SD カードにそのまま置ける `build/package/` をアーティファクトとして出力します。
+
+ローカルでも同じスクリプトで合成できますが、Apple Silicon では x86 エミュレーション経由になり
+実用的な速度が出ません。最小限の確認用途に留めてください。
 
 ```bash
-make build
+make build          # scripts/build_core.sh（コンテナ実行）
+make package        # SD カードのレイアウトを build/package/ に組む
+make dist           # 配布 zip を dist/ に作る
 ```
 
 SD カードへの導入:
