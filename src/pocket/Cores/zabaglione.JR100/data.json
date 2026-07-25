@@ -38,6 +38,15 @@
         "extensions": ["prg"],
         "size_maximum": "0x10000",
         "address": "0x40000000"
+      },
+      {
+        "name": "Cassette",
+        "id": 4,
+        "required": false,
+        "parameters": "0x1",
+        "deferload": true,
+        "extensions": ["cmt"],
+        "address": "0x50000000"
       }
     ]
   }

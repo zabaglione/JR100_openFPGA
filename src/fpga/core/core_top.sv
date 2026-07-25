@@ -393,7 +393,7 @@ end
 // bridge target commands
 // synchronous to clk_74a
 
-    wire            target_dataslot_read = 1'b0;
+    wire            target_dataslot_read;
     wire            target_dataslot_write;
     wire            target_dataslot_getfile = 1'b0;
     wire            target_dataslot_openfile = 1'b0;
@@ -661,19 +661,29 @@ jr100_prog_feeder #(
     .feeding      (  )
 );
 
-// BASIC save write-back: jr100_saver's sector protocol -> target_dataslot_write
+// Media write-back and tape streaming: the MiSTer sector protocols of
+// jr100_saver (slot 3) and jr100_tape_buf (slot 4) -> APF target commands.
     wire        img_mounted, img_readonly;
     wire [63:0] img_size;
     wire [31:0] sd_lba;
     wire        sd_wr, sd_ack;
-    wire [8:0]  sd_buff_addr;
     wire [7:0]  sd_buff_din;
+    wire        tape_mounted, tape_readonly;
+    wire [63:0] tape_size;
+    wire [31:0] sd1_lba;
+    wire        sd1_rd, sd1_wr, sd1_ack;
+    wire [7:0]  sd1_buff_din;
+    wire [8:0]  buff_addr;
+    wire [7:0]  buff_dout;
+    wire        buff_wr;
     wire [31:0] save_rd_data;
 
-jr100_save_bridge #(
-    .SLOT_ID    ( 16'd3 ),
-    .BRIDGEADDR ( 32'h30000000 )
-) save_bridge (
+jr100_media_bridge #(
+    .SLOT_SAVE ( 16'd3 ),
+    .SLOT_TAPE ( 16'd4 ),
+    .RD_BRIDGE ( 32'h50000000 ),
+    .WR_BRIDGE ( 32'h30000000 )
+) media_bridge (
     .clk      ( clk_sys ),
     .rst      ( rst_sys ),
     .clk_74a  ( clk_74a ),
@@ -681,6 +691,9 @@ jr100_save_bridge #(
     .dataslot_requestwrite      ( dataslot_requestwrite ),
     .dataslot_requestwrite_id   ( dataslot_requestwrite_id ),
     .dataslot_requestwrite_size ( dataslot_requestwrite_size ),
+    .dataslot_update            ( dataslot_update ),
+    .dataslot_update_id         ( dataslot_update_id ),
+    .dataslot_update_size       ( dataslot_update_size ),
     .dataslot_allcomplete       ( dataslot_allcomplete ),
 
     .img_mounted  ( img_mounted ),
@@ -689,12 +702,27 @@ jr100_save_bridge #(
     .sd_lba       ( sd_lba ),
     .sd_wr        ( sd_wr ),
     .sd_ack       ( sd_ack ),
-    .sd_buff_addr ( sd_buff_addr ),
-    .sd_buff_din  ( sd_buff_din ),
+    .save_din     ( sd_buff_din ),
+
+    .tape_mounted  ( tape_mounted ),
+    .tape_readonly ( tape_readonly ),
+    .tape_size     ( tape_size ),
+    .sd1_lba       ( sd1_lba ),
+    .sd1_rd        ( sd1_rd ),
+    .sd1_wr        ( sd1_wr ),
+    .sd1_ack       ( sd1_ack ),
+    .tape_din      ( sd1_buff_din ),
+
+    .buff_addr ( buff_addr ),
+    .buff_dout ( buff_dout ),
+    .buff_wr   ( buff_wr ),
 
     .bridge_addr    ( bridge_addr ),
+    .bridge_wr      ( bridge_wr ),
+    .bridge_wr_data ( bridge_wr_data ),
     .bridge_rd_data ( save_rd_data ),
 
+    .target_dataslot_read       ( target_dataslot_read ),
     .target_dataslot_write      ( target_dataslot_write ),
     .target_dataslot_id         ( target_dataslot_id ),
     .target_dataslot_slotoffset ( target_dataslot_slotoffset ),
@@ -780,7 +808,7 @@ jr100_top jr100 (
     .sd_lba         ( sd_lba ),
     .sd_wr          ( sd_wr ),
     .sd_ack         ( sd_ack ),
-    .sd_buff_addr   ( sd_buff_addr ),
+    .sd_buff_addr   ( buff_addr ),
     .sd_buff_din    ( sd_buff_din ),
 
     .autostart_en   ( cfg_autostart_s ),
@@ -792,20 +820,19 @@ jr100_top jr100 (
     .pb7            (  ),
     .audio          ( jr_audio ),
 
-    // Virtual cassette (bridge transfer lands in P6-2)
     .tape_play      ( tape_pulse ),
-    .tape_mounted   ( 1'b0 ),
-    .tape_readonly  ( 1'b0 ),
-    .tape_size      ( 64'd0 ),
+    .tape_mounted   ( tape_mounted ),
+    .tape_readonly  ( tape_readonly ),
+    .tape_size      ( tape_size ),
     .tape_playing   (  ),
     .tape_recording (  ),
-    .sd1_lba        (  ),
-    .sd1_rd         (  ),
-    .sd1_wr         (  ),
-    .sd1_ack        ( 1'b0 ),
-    .sd1_buff_din   (  ),
-    .sd_buff_dout   ( 8'd0 ),
-    .sd_buff_wr     ( 1'b0 ),
+    .sd1_lba        ( sd1_lba ),
+    .sd1_rd         ( sd1_rd ),
+    .sd1_wr         ( sd1_wr ),
+    .sd1_ack        ( sd1_ack ),
+    .sd1_buff_din   ( sd1_buff_din ),
+    .sd_buff_dout   ( buff_dout ),
+    .sd_buff_wr     ( buff_wr ),
 
     .vid_pixel      ( vid_pixel ),
     .vid_de         ( vid_de ),
