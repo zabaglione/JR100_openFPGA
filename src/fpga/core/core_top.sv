@@ -1003,11 +1003,15 @@ assign video_rgb_clock_90 = clk_vid_90;
 // Feeding the raw 0/+0x4000 gate straight into I2S sounded broken on the
 // device: every note start/stop is a 25%-full-scale DC step, which the
 // Pocket's DAC and small speaker reproduce as pops and apparent clipping.
-// The real machine never has this problem because its speaker is
-// mechanically AC-coupled - so a digital DC blocker (one-pole high-pass,
-// y[n] = x[n] - x[n-1] + 255/256 * y[n-1] at ~48 kHz, fc around 30 Hz) is
-// the faithful equivalent. A sustained tone settles at +/-0x2000, the same
-// audible level the MiSTer build drives, and silence decays to zero.
+//
+// With only DC blocking (fc ~30 Hz) the tone came out clean over the dock
+// but "a bit bassy" everywhere and harsh on the built-in speaker: a full
+// square wave carries low-end and high harmonics the real JR-100's small
+// speaker physically cannot reproduce - its thin bright "pi!" IS that
+// band limit. So the output stage models the speaker: a one-pole high-pass
+// at ~240 Hz (fc = fs/(2*pi*32)) thins the lows the way a small cone does,
+// and a one-pole low-pass at ~7.5 kHz softens the harmonics that excited
+// the Pocket's speaker. Shift-and-add only; silence still decays to zero.
 ////////////////////////////////////////////////////////////////////////////////
 
     // ~48 kHz sample enable: 57.272727 MHz / 1193 = 48.007 kHz
@@ -1025,19 +1029,22 @@ end
 
     wire signed [17:0] aud_x = jr_audio ? 18'sd16384 : 18'sd0;
     reg  signed [17:0] aud_x1 = 18'sd0;
-    reg  signed [17:0] aud_y  = 18'sd0;
+    reg  signed [17:0] aud_hp = 18'sd0;   // high-pass state (~240 Hz)
+    reg  signed [17:0] aud_lp = 18'sd0;   // low-pass state (~7.5 kHz)
+    wire signed [17:0] aud_d  = aud_hp - aud_lp;
 always @(posedge clk_sys) begin
     if (cen_aud) begin
         aud_x1 <= aud_x;
-        aud_y  <= aud_x - aud_x1 + (aud_y - (aud_y >>> 8));
+        aud_hp <= aud_x - aud_x1 + (aud_hp - (aud_hp >>> 5));
+        aud_lp <= aud_lp + (aud_d >>> 1) + (aud_d >>> 3);   // k = 5/8
     end
 end
 
-    // |aud_y| never exceeds ~1.5x the step size, well inside 16 bits; the
+    // |aud_lp| never exceeds ~1.5x the step size, well inside 16 bits; the
     // clamp is defensive only.
     wire signed [15:0] audio_pcm =
-        (aud_y > 18'sd32767)  ? 16'sd32767  :
-        (aud_y < -18'sd32768) ? -16'sd32768 : aud_y[15:0];
+        (aud_lp > 18'sd32767)  ? 16'sd32767  :
+        (aud_lp < -18'sd32768) ? -16'sd32768 : aud_lp[15:0];
 
 sound_i2s #(
     .CHANNEL_WIDTH ( 16 ),
