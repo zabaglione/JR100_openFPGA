@@ -1,0 +1,41 @@
+# Quartus build artifacts
+build/
+db/
+incremental_db/
+output_files/
+simulation/
+greybox_tmp/
+hc_output/
+timing/
+*.qws
+*.rpt
+*.summary
+*.smsg
+*.pin
+*.sof
+*.pof
+*.jdi
+*.done
+*.qdf.bak
+
+# Bitstreams (built, not committed)
+*.rbf
+*.rbf_r
+
+# Distribution
+dist/
+
+# ROMs and user data (never commit)
+*.rom
+*.prg
+*.bas
+*.cmt
+boot.rom
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
