@@ -537,6 +537,49 @@ synch_3 s_reset (reset_n & pll_core_locked, reset_n_sys, clk_sys);
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// boot.rom loading
+//
+// The slot is host-pushed: at core launch (and whenever the user picks a new
+// file) APF streams the 8 KiB image as 32-bit bridge writes at 0x00000000,
+// and agg23's data_loader carries them across to the 57 MHz domain as single
+// bytes for jr100_top's loader port. boot.rom is the MiSTer layout: character
+// ROM in 0x0000-0x03FF, BASIC ROM in 0x0400-0x1FFF.
+//
+// The machine is held in reset by ~dataslot_allcomplete: zero from power-on
+// until every slot is processed (command 0x008F), and it drops back to zero
+// while a reload is in progress, so the CPU always comes out of reset into a
+// fully written ROM and performs the real MC6800 reset-vector sequence.
+////////////////////////////////////////////////////////////////////////////////
+
+    wire        rom_wr;
+    wire [27:0] rom_wr_addr;
+    wire [7:0]  rom_wr_data;
+
+data_loader #(
+    .ADDRESS_MASK_UPPER_4       ( 4'h0 ),
+    .ADDRESS_SIZE               ( 28 ),
+    .WRITE_MEM_CLOCK_DELAY      ( 4 ),
+    .WRITE_MEM_EN_CYCLE_LENGTH  ( 1 ),
+    .OUTPUT_WORD_SIZE           ( 1 )
+) rom_loader (
+    .clk_74a              ( clk_74a ),
+    .clk_memory           ( clk_sys ),
+
+    .bridge_wr            ( bridge_wr ),
+    .bridge_endian_little ( bridge_endian_little ),
+    .bridge_addr          ( bridge_addr ),
+    .bridge_wr_data       ( bridge_wr_data ),
+
+    .write_en             ( rom_wr ),
+    .write_addr           ( rom_wr_addr ),
+    .write_data           ( rom_wr_data )
+);
+
+    wire    downloading_s;
+synch_3 s_downloading (~dataslot_allcomplete, downloading_s, clk_sys);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // JR-100 machine
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -552,13 +595,13 @@ synch_3 s_reset (reset_n & pll_core_locked, reset_n_sys, clk_sys);
 jr100_top jr100 (
     .clk            ( clk_sys ),
     .rst            ( rst_sys ),
-    .downloading    ( 1'b0 ),
+    .downloading    ( downloading_s ),
     .cpu_hold       ( 1'b0 ),
 
-    // ROM loader - fed by the APF data slot in P2-1
-    .loader_we      ( 1'b0 ),
-    .loader_addr    ( 13'd0 ),
-    .loader_data    ( 8'd0 ),
+    // boot.rom bytes from the APF data slot (guarded to the 8 KiB window)
+    .loader_we      ( rom_wr && (rom_wr_addr[27:13] == 15'd0) ),
+    .loader_addr    ( rom_wr_addr[12:0] ),
+    .loader_data    ( rom_wr_data ),
 
     // .prg / .bas loaders - P5-1
     .prg_download   ( 1'b0 ),
