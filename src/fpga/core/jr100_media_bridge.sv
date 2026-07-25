@@ -35,6 +35,7 @@ module jr100_media_bridge #(
 ) (
     input  wire        clk,           // machine clock
     input  wire        rst,
+    input  wire        machine_rst,   // user/machine reset (mounts survive it)
     input  wire        clk_74a,
 
     // slot bookkeeping (clk_74a domain)
@@ -120,19 +121,42 @@ module jr100_media_bridge #(
     synch_3 s_issave   (slot_is_save_74,      is_save_s,     clk);
     synch_3 s_tupd     (tape_upd_t_74,        tape_upd_t,    clk);
 
+    // The clients' mount state lives inside jr100_top and is wiped by a
+    // machine reset (seen on device: Reset Machine then Tape Play did
+    // nothing). The bridge is not reset by machine_rst, so it remembers
+    // what is mounted and re-pulses the mounts after the reset releases.
     reg allcomplete_q, tape_upd_q;
+    reg save_present = 1'b0, tape_present = 1'b0;
+    reg machine_rst_q = 1'b0;
+    reg [3:0] remount_cnt = 4'd0;
+
     always @(posedge clk) begin
         allcomplete_q <= allcomplete_s;
         tape_upd_q    <= tape_upd_t;
+        machine_rst_q <= machine_rst;
         img_mounted   <= 1'b0;
         tape_mounted  <= 1'b0;
+
         if (allcomplete_s & ~allcomplete_q & is_save_s) begin
-            img_mounted <= 1'b1;
-            img_size    <= {32'd0, save_size_74};
+            img_mounted  <= 1'b1;
+            img_size     <= {32'd0, save_size_74};
+            save_present <= 1'b1;
         end
         if (tape_upd_q != tape_upd_t) begin
             tape_mounted <= 1'b1;
             tape_size    <= {32'd0, tape_size_74};   // quasi-static by now
+            tape_present <= 1'b1;
+        end
+
+        // a few cycles after the machine leaves reset, restore the mounts
+        if (machine_rst_q & ~machine_rst)
+            remount_cnt <= 4'd15;
+        else if (remount_cnt != 4'd0) begin
+            remount_cnt <= remount_cnt - 4'd1;
+            if (remount_cnt == 4'd1) begin
+                if (save_present) img_mounted  <= 1'b1;
+                if (tape_present) tape_mounted <= 1'b1;
+            end
         end
     end
 

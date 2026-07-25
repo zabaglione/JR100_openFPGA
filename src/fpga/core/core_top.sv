@@ -684,9 +684,10 @@ jr100_media_bridge #(
     .RD_BRIDGE ( 32'h50000000 ),
     .WR_BRIDGE ( 32'h30000000 )
 ) media_bridge (
-    .clk      ( clk_sys ),
-    .rst      ( rst_sys ),
-    .clk_74a  ( clk_74a ),
+    .clk         ( clk_sys ),
+    .rst         ( rst_sys ),
+    .machine_rst ( machine_rst | downloading_s ),
+    .clk_74a     ( clk_74a ),
 
     .dataslot_requestwrite      ( dataslot_requestwrite ),
     .dataslot_requestwrite_id   ( dataslot_requestwrite_id ),
