@@ -324,6 +324,9 @@ always @(*) begin
     default: begin
         bridge_rd_data <= 0;
     end
+    32'h0000Fxxx: begin
+        bridge_rd_data <= cfg_rd_data;
+    end
     32'h3xxxxxxx: begin
         bridge_rd_data <= save_rd_data;
     end
@@ -842,7 +845,14 @@ jr100_top jr100 (
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Core settings and actions (interact.json), bridge writes at 0x7xxxxxxx.
+// Core settings and actions (interact.json), bridge registers at
+// 0x0000F000-0x0000F018.
+//
+// The first attempt put these at 0x7xxxxxxx and no menu value ever reached
+// the core on hardware. PocketCPC's proven layout keeps its registers in
+// the low 64 KiB and serves READBACK at the same addresses, so this block
+// mirrors that exactly. The region sits above the 8 KiB boot.rom push
+// window, and every slot loader's address guard excludes it.
 //
 // Values are quasi-static (menu-driven), so they cross domains through
 // plain synchronisers; actions are write-strobes turned into toggles here
@@ -859,15 +869,26 @@ jr100_top jr100 (
 always @(posedge clk_74a) begin
     if (bridge_wr) begin
         case (bridge_addr)
-            32'h70000000: cfg_color_74     <= bridge_wr_data[2:0];
-            32'h70000004: cfg_autostart_74 <= bridge_wr_data[0];
-            32'h70000008: cfg_extram_74    <= bridge_wr_data[0];
-            32'h70000010: act_reset_74     <= ~act_reset_74;
-            32'h70000014: act_save_74      <= ~act_save_74;
-            32'h70000018: act_tape_74      <= ~act_tape_74;
+            32'h0000F000: cfg_color_74     <= bridge_wr_data[2:0];
+            32'h0000F004: cfg_autostart_74 <= bridge_wr_data[0];
+            32'h0000F008: cfg_extram_74    <= bridge_wr_data[0];
+            32'h0000F010: act_reset_74     <= ~act_reset_74;
+            32'h0000F014: act_save_74      <= ~act_save_74;
+            32'h0000F018: act_tape_74      <= ~act_tape_74;
             default: ;
         endcase
     end
+end
+
+// readback, PocketCPC-style: the OS can re-read what it wrote
+    reg [31:0] cfg_rd_data;
+always @(posedge clk_74a) begin
+    case (bridge_addr)
+        32'h0000F000: cfg_rd_data <= {29'd0, cfg_color_74};
+        32'h0000F004: cfg_rd_data <= {31'd0, cfg_autostart_74};
+        32'h0000F008: cfg_rd_data <= {31'd0, cfg_extram_74};
+        default:      cfg_rd_data <= 32'd0;
+    endcase
 end
 
     wire       cfg_autostart_s, cfg_extram_s;

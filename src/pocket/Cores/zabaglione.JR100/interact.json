@@ -8,7 +8,7 @@
         "type": "list",
         "enabled": true,
         "persist": true,
-        "address": "0x70000000",
+        "address": "0x0000F000",
         "defaultval": 0,
         "mask": "0xFFFFFFF8",
         "options": [
@@ -28,9 +28,10 @@
         "type": "check",
         "enabled": true,
         "persist": true,
-        "address": "0x70000004",
+        "address": "0x0000F004",
         "defaultval": 1,
-        "value": 1
+        "value": "0x00000001",
+        "mask": "0xFFFFFFFE"
       },
       {
         "name": "Extended RAM (reset)",
@@ -38,9 +39,10 @@
         "type": "check",
         "enabled": true,
         "persist": true,
-        "address": "0x70000008",
+        "address": "0x0000F008",
         "defaultval": 0,
-        "value": 1
+        "value": "0x00000001",
+        "mask": "0xFFFFFFFE"
       },
       {
         "name": "Reset Machine",
@@ -49,8 +51,9 @@
         "enabled": true,
         "persist": false,
         "writeonly": true,
-        "address": "0x70000010",
-        "value": 1
+        "address": "0x0000F010",
+        "value": "0x00000001",
+        "mask": "0x00000000"
       },
       {
         "name": "Save BASIC to File",
@@ -59,8 +62,9 @@
         "enabled": true,
         "persist": false,
         "writeonly": true,
-        "address": "0x70000014",
-        "value": 1
+        "address": "0x0000F014",
+        "value": "0x00000001",
+        "mask": "0x00000000"
       },
       {
         "name": "Tape Play",
@@ -69,8 +73,9 @@
         "enabled": true,
         "persist": false,
         "writeonly": true,
-        "address": "0x70000018",
-        "value": 1
+        "address": "0x0000F018",
+        "value": "0x00000001",
+        "mask": "0x00000000"
       }
     ],
     "messages": []
