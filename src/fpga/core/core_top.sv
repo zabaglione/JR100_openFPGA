@@ -998,23 +998,56 @@ assign video_rgb_clock_90 = clk_vid_90;
 // Audio
 //
 // The JR-100's sound is the VIA Timer 1 square wave; jr100_top already
-// applies the output gating and band limiting the MiSTer core uses, so the
-// 1-bit `jr_audio` maps to the same 0/0x4000 unsigned swing MiSTer feeds its
-// DAC, here through agg23's I2S bridge (it carries the sample across from
-// the machine clock domain internally).
+// applies the output gating and band limiting the MiSTer core uses.
+//
+// Feeding the raw 0/+0x4000 gate straight into I2S sounded broken on the
+// device: every note start/stop is a 25%-full-scale DC step, which the
+// Pocket's DAC and small speaker reproduce as pops and apparent clipping.
+// The real machine never has this problem because its speaker is
+// mechanically AC-coupled - so a digital DC blocker (one-pole high-pass,
+// y[n] = x[n] - x[n-1] + 255/256 * y[n-1] at ~48 kHz, fc around 30 Hz) is
+// the faithful equivalent. A sustained tone settles at +/-0x2000, the same
+// audible level the MiSTer build drives, and silence decays to zero.
 ////////////////////////////////////////////////////////////////////////////////
 
-    wire [14:0] audio_sample = {jr_audio, 14'd0};
+    // ~48 kHz sample enable: 57.272727 MHz / 1193 = 48.007 kHz
+    reg  [10:0]        cen_aud_cnt = 11'd0;
+    reg                cen_aud = 1'b0;
+always @(posedge clk_sys) begin
+    cen_aud <= 1'b0;
+    if (cen_aud_cnt == 11'd1192) begin
+        cen_aud_cnt <= 11'd0;
+        cen_aud     <= 1'b1;
+    end else begin
+        cen_aud_cnt <= cen_aud_cnt + 11'd1;
+    end
+end
+
+    wire signed [17:0] aud_x = jr_audio ? 18'sd16384 : 18'sd0;
+    reg  signed [17:0] aud_x1 = 18'sd0;
+    reg  signed [17:0] aud_y  = 18'sd0;
+always @(posedge clk_sys) begin
+    if (cen_aud) begin
+        aud_x1 <= aud_x;
+        aud_y  <= aud_x - aud_x1 + (aud_y - (aud_y >>> 8));
+    end
+end
+
+    // |aud_y| never exceeds ~1.5x the step size, well inside 16 bits; the
+    // clamp is defensive only.
+    wire signed [15:0] audio_pcm =
+        (aud_y > 18'sd32767)  ? 16'sd32767  :
+        (aud_y < -18'sd32768) ? -16'sd32768 : aud_y[15:0];
 
 sound_i2s #(
-    .CHANNEL_WIDTH ( 15 ),
-    .SIGNED_INPUT  ( 0 )
+    .CHANNEL_WIDTH ( 16 ),
+    .SIGNED_INPUT  ( 1 )
 ) sound_i2s (
     .clk_74a    ( clk_74a ),
     .clk_audio  ( clk_sys ),
 
-    .audio_l    ( audio_sample ),
-    .audio_r    ( audio_sample ),
+    .audio_l    ( audio_pcm ),
+    .audio_r    ( audio_pcm ),
 
     .audio_mclk ( audio_mclk ),
     .audio_lrck ( audio_lrck ),
