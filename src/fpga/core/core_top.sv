@@ -1077,13 +1077,11 @@ bram_block_dp #(
     wire in_fb     = (x_count >= FB_X0) && (x_count < FB_X0 + 10'd256) &&
                      (y_count >= FB_Y0) && (y_count < FB_Y0 + 10'd192);
 
-// Bring-up dressing around the framebuffer window: an orange ring at the
-// active-area edge, colour bars across the top band (any colour other than
-// black or white proves the DDR link carries components intact), and a marker
-// sweeping one pixel per frame along the bottom band to show the 60 Hz
-// cadence. The framebuffer window itself shows the machine - black until the
-// ROM loader lands in P2. Gated so P2 can turn the dressing off.
-    localparam bit BRINGUP_BANDS = 1'b1;
+// Bring-up dressing around the framebuffer window: an orange ring, colour
+// bars and a 60 Hz sweep marker. Served its purpose during P1-P6 hardware
+// verification; off for release, leaving a plain black surround. Flip back
+// on when debugging the video path.
+    localparam bit BRINGUP_BANDS = 1'b0;
 
     function automatic [23:0] palette(input [2:0] idx);
         case (idx)

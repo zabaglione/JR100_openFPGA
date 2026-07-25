@@ -22,7 +22,7 @@ on:
       - '.github/workflows/build-core.yml'
 
 permissions:
-  contents: read
+  contents: write   # tag builds publish a GitHub release
 
 jobs:
   bitstream:
@@ -73,3 +73,16 @@ jobs:
             build/output_files/*.rpt
           retention-days: 30
           if-no-files-found: warn
+
+      - name: Package distribution zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: make dist
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --title "JR-100 for Analogue Pocket ${GITHUB_REF_NAME}" \
+            --generate-notes

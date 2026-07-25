@@ -11,8 +11,35 @@ authoritative.*
 [pyjr100emu](https://github.com/zabaglione/pyjr100emu) との命令境界ロックステップで
 検証済みです。
 
-> **状態: 開発中。** 実機で BASIC の起動を確認済み。入力・音声・ファイル I/O を
-> 実装中です。実装計画と進捗は [docs/PLAN.md](docs/PLAN.md) を参照してください。
+> **状態: 機能完成。** MiSTer 版の全機能を Pocket 実機で検証済みです:
+> BASIC、キーボード入力（仮想 / Dock USB）、ジョイスティック、BEEP 音声、
+> プログラムロード、BASIC セーブ、仮想カセットデッキ。
+> 開発ログは [docs/PLAN.md](docs/PLAN.md) を参照してください。
+
+## 使い方
+
+メニュー（データスロットは「Load ...」として表示されます）:
+
+| メニュー項目 | 機能 |
+|---|---|
+| Load PRG Program | `.prg` を即時ロード（オートスタートで `RUN` / `A=USR($hhhh)` を自動入力） |
+| Load BASIC Text | `.bas` テキストを即時ロード |
+| Load Tape | `.cmt` を仮想デッキに装填 |
+| Load Save Target | `Save BASIC->Target` の書き込み先 `.prg` を指定 |
+| Tape Play | デッキの再生ボタン（BASIC で `LOAD` を打ってから押す） |
+| Save BASIC->Target | BASIC プログラムをマウント済みセーブ先へ書き込み |
+| Display Color / Autostart / Extended RAM / Reset Machine | 各種設定 |
+
+カセットの操作は実機と同じ 600 baud:
+`SAVE"NAME"` はマウント中のテープに自動録音、`LOAD"NAME"` のあと
+**Tape Play** で再生します。マウントは **Reset Machine** をまたいで保持されます。
+
+仮想キーボードは **Select** で開閉: 十字キーで移動、**A** 押下、**B** スペース、
+**X** リターン、**L1** シフト、**R1** CTL。SHFT / CTL セルを **A** で押すとロックされ、
+キーラベルがシフト面の刻印に切り替わります（`@` は実機同様 SHIFT+U）。
+GRAPH モード中（CTRL+V、RETURN で解除）はラベルがセミグラフィック面になり、
+実機のキャラクタジェネレータそのままのグリフで表示されます。
+Dock 経由の USB キーボードは JR-100 の物理配列で動作します。
 
 ## 機能
 

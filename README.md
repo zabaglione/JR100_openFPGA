@@ -10,9 +10,36 @@ The machine itself is ported unmodified from
 is verified against the [pyjr100emu](https://github.com/zabaglione/pyjr100emu)
 reference emulator by instruction-boundary lockstep.
 
-> **Status: under development.** BASIC boots on hardware; input, audio and
-> file I/O are being brought up. See [docs/PLAN.md](docs/PLAN.md) for the
-> implementation plan and current progress (Japanese).
+> **Status: feature-complete.** Everything the MiSTer core does has been
+> verified on Pocket hardware: BASIC, keyboard input (virtual and dock USB),
+> joystick, BEEP audio, program loading, BASIC save and the virtual cassette
+> deck. See [docs/PLAN.md](docs/PLAN.md) for the development log (Japanese).
+
+## Using the core
+
+Menus (data slots appear as "Load ..."):
+
+| Menu item | What it does |
+|---|---|
+| Load PRG Program | Load a `.prg` instantly (autostart types `RUN` / `A=USR($hhhh)`) |
+| Load BASIC Text | Load a `.bas` text listing instantly |
+| Load Tape | Put a `.cmt` cassette in the virtual deck |
+| Load Save Target | Pick the `.prg` file that `Save BASIC->Target` writes into |
+| Tape Play | Press play on the deck (use after typing `LOAD` in BASIC) |
+| Save BASIC->Target | Write the BASIC program to the mounted save target |
+| Display Color / Autostart / Extended RAM / Reset Machine | Settings |
+
+Cassette workflow, exactly like the real machine at 600 baud:
+`SAVE"NAME"` records to the mounted tape automatically; `LOAD"NAME"` then
+**Tape Play** plays it back. Mounts survive **Reset Machine**.
+
+The virtual keyboard opens with **Select**: D-pad moves, **A** presses,
+**B** space, **X** return, **L1** shift, **R1** ctrl. Pressing **A** on the
+SHFT/CTL cells locks the modifier and the key labels switch to the shifted
+legends (`@` is SHIFT+U, as on the real keyboard). In GRAPH mode (CTRL+V,
+cancelled by RETURN) the labels show the semigraphic set, rendered from the
+machine's own character generator. USB keyboards work through the dock with
+the JR-100's physical layout.
 
 ## Features
 
