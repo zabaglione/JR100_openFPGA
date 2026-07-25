@@ -1,57 +1,82 @@
 # JR-100 for Analogue Pocket (openFPGA)
 
-松下電器（ナショナル）**JR-100**（1981年）の FPGA 実装を、Analogue Pocket の openFPGA 向けに移植したコアです。
+*日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
-エミュレーション本体は [JR100_MiSTer](https://github.com/zabaglione/JR100_MiSTer) から流用しています。
-MiSTer 版は参照エミュレータ [pyjr100emu](https://github.com/zabaglione/pyjr100emu) との命令境界ロックステップで検証済みです。
+An openFPGA core for the Analogue Pocket that re-implements the **National
+(Matsushita) JR-100** personal computer (Japan, 1981).
 
-> **状態: 開発中。** 実装計画と進捗は [docs/PLAN.md](docs/PLAN.md) を参照してください。
+The machine itself is ported unmodified from
+[JR100_MiSTer](https://github.com/zabaglione/JR100_MiSTer), whose emulation
+is verified against the [pyjr100emu](https://github.com/zabaglione/pyjr100emu)
+reference emulator by instruction-boundary lockstep.
 
-## 実装機能（MiSTer 版から引き継ぐもの）
+> **Status: under development.** BASIC boots on hardware; input, audio and
+> file I/O are being brought up. See [docs/PLAN.md](docs/PLAN.md) for the
+> implementation plan and current progress (Japanese).
 
-- MB8861H CPU（MC6800 互換 + 独自 5 命令）
-- R6522 VIA（サイクル単位）
-- 32×24 キャラクタ表示、ユーザー定義グリフ（CGRAM / 共有 VRAM グリフ）
-- 実機準拠のビデオタイミング（ドットクロック 7.15909 MHz、NTSC 非準拠の独自同期）
-- 表示色の選択（白 / 緑 / アンバー ほか）
-- BEEP 音声（帯域制限済み）
-- 仮想カセットデッキ（実 ROM の `LOAD` / `SAVE` に対応、600 baud）
-- 拡張 RAM 16 KiB（任意）
+## Features
 
-## Pocket 版で新規に実装するもの
+Inherited from the MiSTer core:
 
-- 仮想キーボード（本体のみで操作可能）
-- Dock 経由の USB キーボード
-- APF データスロットによるファイル入出力
+- MB8861H CPU (MC6800-compatible plus five extra instructions)
+- R6522 VIA with per-cycle behaviour
+- 32x24 character display with user-defined glyphs (CGRAM / shared-VRAM)
+- The machine's own video timing preserved internally: 7.15909 MHz dot
+  clock, 62.4 Hz, a sync format deliberately not NTSC
+- BEEP audio (band-limited)
+- Virtual cassette deck compatible with the real ROM's `LOAD`/`SAVE`
+  (600 baud FSK)
+- Optional 16 KiB extended RAM
 
-## ビルド
+Pocket-specific:
 
-**GitHub Actions（`build-core` ワークフロー）が主のビルド経路です。** Quartus Prime 18.1.1 Lite を
-コンテナで実行し、SD カードにそのまま置ける `build/package/` をアーティファクトとして出力します。
+- Scaler output decoupled through a 1bpp framebuffer (the Pocket's scaler
+  runs at a proven 320x240@60 Hz while the machine keeps its native raster)
+- On-screen virtual keyboard laid out like the real 45-key matrix
+  (Select opens it; D-pad moves, A presses, B space, X return,
+  L1 shift, R1 ctrl)
+- USB keyboards via the Analogue Dock (HID decoded straight into the key
+  matrix)
 
-ローカルでも同じスクリプトで合成できますが、Apple Silicon では x86 エミュレーション経由になり
-実用的な速度が出ません。最小限の確認用途に留めてください。
+## Building
+
+**GitHub Actions (`build-core` workflow) is the primary build path.** It
+compiles with Quartus Prime 18.1.1 Lite in a container and uploads a
+`build/package/` artifact laid out exactly like the SD card.
+
+The same script builds locally, but on Apple Silicon it runs under x86
+emulation and is too slow for iteration — use it for minimal checks only.
 
 ```bash
-make build          # scripts/build_core.sh（コンテナ実行）
-make package        # SD カードのレイアウトを build/package/ に組む
-make dist           # 配布 zip を dist/ に作る
+make build          # compile in a container (scripts/build_core.sh)
+make fetch          # pull the staged package from the latest CI run instead
+make package        # stage the SD layout into build/package/
+make dist           # zip a distributable into dist/
 ```
 
-SD カードへの導入:
+Installing onto the Pocket's SD card:
 
 ```bash
-make install POCKET_SD=/Volumes/POCKET
+make install POCKET_SD="/Volumes/YOUR_SD"
 ```
 
-Pocket の `Tools > Developer > USB SD Access` を有効にすると、microSD を抜かずに
-USB-C 経由でマウントできます。
+Enabling `Tools > Developer > USB SD Access` on the Pocket mounts the
+microSD over USB-C without removing the card.
 
-## ROM について
+## ROM
 
-BASIC ROM は同梱していません。実機から吸い出したものを利用者自身で用意し、
-`Assets/jr100/common/boot.rom` として配置してください（char ROM 1 KiB + BASIC ROM 7 KiB の 8 KiB 結合イメージ）。
+The BASIC ROM is **not** included. Dump it from your own hardware and place
+it at `Assets/jr100/common/boot.rom` — an 8 KiB image, character ROM in
+`0x0000-0x03FF` followed by the BASIC ROM in `0x0400-0x1FFF` (the same
+`boot.rom` the MiSTer core uses).
 
-## ライセンス
+## License
 
-GPL-2.0-or-later。詳細と第三者コードの帰属は [LICENSE](LICENSE) を参照してください。
+GPL-2.0-or-later. See [LICENSE](LICENSE); third-party attributions:
+
+- `src/fpga/apf/` and the Quartus project derive from Analogue's
+  [core-template](https://github.com/open-fpga/core-template)
+- `src/fpga/core/data_loader.sv` is from agg23's
+  [analogue-pocket-utils](https://github.com/agg23/analogue-pocket-utils) (MIT)
+- The port's structure references
+  [PocketCPC](https://github.com/stilvoid/PocketCPC) throughout
