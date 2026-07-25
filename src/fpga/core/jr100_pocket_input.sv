@@ -20,6 +20,12 @@
 //     Return, L1 holds Shift and R1 holds Ctrl. While it is open the
 //     joystick is masked so navigation does not leak into games.
 //
+//     Pressing A on the SHFT or CTL cell toggles a LOCK instead of a
+//     momentary press: the modifier's matrix bit stays asserted (so the
+//     ROM sees SHIFT/CTL held) until the cell is pressed again or the
+//     keyboard is closed. The overlay shows the lock and switches the key
+//     labels to the shifted keycap legends.
+//
 //  The visual grid mirrors the real JR-100 rows:
 //      1 2 3 4 5 6 7 8 9 0
 //      Q W E R T Y U I O P
@@ -190,15 +196,31 @@ module jr100_pocket_input (
 
     wire [3:0] col_max = (vkb_row == 3'd4) ? 4'd4 : 4'd9;
 
+    // the two modifier cells in the bottom row
+    wire cursor_on_ctl   = (vkb_row == 3'd4) && (vkb_col == 4'd0);
+    wire cursor_on_shift = (vkb_row == 3'd4) && (vkb_col == 4'd1);
+
+    reg  shift_lock, ctl_lock;
+
     always @(posedge clk) begin
         if (rst) begin
             vkb_active <= 1'b0;
             vkb_row    <= 3'd1;
             vkb_col    <= 4'd0;
             repeat_cnt <= 25'd0;
+            shift_lock <= 1'b0;
+            ctl_lock   <= 1'b0;
         end else begin
-            if (btn_edge[BTN_SELECT])
+            if (btn_edge[BTN_SELECT]) begin
                 vkb_active <= ~vkb_active;
+                shift_lock <= 1'b0;
+                ctl_lock   <= 1'b0;
+            end
+
+            if (vkb_active && btn_edge[BTN_A]) begin
+                if (cursor_on_shift) shift_lock <= ~shift_lock;
+                if (cursor_on_ctl)   ctl_lock   <= ~ctl_lock;
+            end
 
             if (!any_dir || dir_edge)
                 repeat_cnt <= 25'd0;
@@ -237,8 +259,8 @@ module jr100_pocket_input (
     end
 
     assign vkb_pressed = vkb_active & btn[BTN_A];
-    assign vkb_shift   = vkb_active & btn[BTN_L1];
-    assign vkb_ctl     = vkb_active & btn[BTN_R1];
+    assign vkb_shift   = vkb_active & (shift_lock | btn[BTN_L1]);
+    assign vkb_ctl     = vkb_active & (ctl_lock   | btn[BTN_R1]);
 
     // ------------------------------------------------------------------
     // Matrix assembly and joystick
@@ -261,11 +283,14 @@ module jr100_pocket_input (
     always @(*) begin
         vkb_matrix = 45'd0;
         if (vkb_active) begin
-            if (btn[BTN_A])  vkb_matrix[vkb_target(vkb_row, vkb_col)] = 1'b1;
-            if (btn[BTN_B])  vkb_matrix[41] = 1'b1;   // SPACE
-            if (btn[BTN_X])  vkb_matrix[43] = 1'b1;   // RETURN
-            if (btn[BTN_L1]) vkb_matrix[1]  = 1'b1;   // SHIFT
-            if (btn[BTN_R1]) vkb_matrix[0]  = 1'b1;   // CTL
+            // A presses the key under the cursor, except on the modifier
+            // cells whose press is the lock toggle handled above.
+            if (btn[BTN_A] && !cursor_on_shift && !cursor_on_ctl)
+                vkb_matrix[vkb_target(vkb_row, vkb_col)] = 1'b1;
+            if (btn[BTN_B])              vkb_matrix[41] = 1'b1;  // SPACE
+            if (btn[BTN_X])              vkb_matrix[43] = 1'b1;  // RETURN
+            if (shift_lock | btn[BTN_L1]) vkb_matrix[1] = 1'b1;  // SHIFT
+            if (ctl_lock   | btn[BTN_R1]) vkb_matrix[0] = 1'b1;  // CTL
         end
     end
 

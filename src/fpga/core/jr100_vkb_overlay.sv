@@ -84,10 +84,20 @@ module jr100_vkb_overlay (
     // ------------------------------------------------------------------
     // Labels
     // ------------------------------------------------------------------
-    // codes: 0 blank, 1-26 A-Z, 27-36 0-9, 37 ';' 38 ',' 39 '.' 40 ':' 41 '-'
-    function automatic [5:0] label0(input [2:0] vr, input [3:0] vc);
+    // codes: 0 blank, 1-26 A-Z, 27-36 0-9, 37 ';' 38 ',' 39 '.' 40 ':' 41 '-',
+    // 42 '!' 43 '"' 44 '#' 45 '$' 46 '%' 47 '&' 48 "'" 49 '(' 50 ')' 51 '*'
+    // 52 '+' 53 '<' 54 '>' 55 '='.
+    //
+    // With SHIFT locked (or held) the labels switch to the JR-100 keycap
+    // shift legends: 1!-9) on the digits, ;+ :* ,< .> -=. Letters have no
+    // shift legend and stay as they are.
+    function automatic [5:0] label0(input [2:0] vr, input [3:0] vc,
+                                    input shifted);
         case (vr)
-            3'd0: label0 = (vc == 4'd9) ? 6'd27 : (6'd28 + {2'd0, vc}); // 1..9,0
+            3'd0: label0 = shifted ? ((vc == 4'd9) ? 6'd27          // 0
+                                                   : (6'd42 + {2'd0, vc})) // !..)
+                                   : ((vc == 4'd9) ? 6'd27
+                                                   : (6'd28 + {2'd0, vc})); // 1..9
             3'd1: case (vc)
                 4'd0: label0 = 6'd17;  // Q
                 4'd1: label0 = 6'd23;  // W
@@ -110,7 +120,7 @@ module jr100_vkb_overlay (
                 4'd6: label0 = 6'd10;  // J
                 4'd7: label0 = 6'd11;  // K
                 4'd8: label0 = 6'd12;  // L
-                default: label0 = 6'd37; // ;
+                default: label0 = shifted ? 6'd52 : 6'd37; // ;  ->  +
             endcase
             default: case (vc)
                 4'd0: label0 = 6'd26;  // Z
@@ -120,15 +130,16 @@ module jr100_vkb_overlay (
                 4'd4: label0 = 6'd2;   // B
                 4'd5: label0 = 6'd14;  // N
                 4'd6: label0 = 6'd13;  // M
-                4'd7: label0 = 6'd38;  // ,
-                4'd8: label0 = 6'd39;  // .
-                default: label0 = 6'd40; // :
+                4'd7: label0 = shifted ? 6'd53 : 6'd38; // ,  ->  <
+                4'd8: label0 = shifted ? 6'd54 : 6'd39; // .  ->  >
+                default: label0 = shifted ? 6'd51 : 6'd40; // :  ->  *
             endcase
         endcase
     endfunction
 
     // row-4 labels: CTL / SHFT / SPC / - / RET, up to four glyphs
-    function automatic [5:0] label4(input [3:0] vc, input [1:0] idx);
+    function automatic [5:0] label4(input [3:0] vc, input [1:0] idx,
+                                    input shifted);
         case (vc)
             4'd0: case (idx)                     // CTL
                 2'd0: label4 = 6'd3;   // C
@@ -148,7 +159,8 @@ module jr100_vkb_overlay (
                 2'd2: label4 = 6'd3;   // C
                 default: label4 = 6'd0;
             endcase
-            4'd3: label4 = (idx == 2'd0) ? 6'd41 : 6'd0;  // -
+            4'd3: label4 = (idx == 2'd0) ? (shifted ? 6'd55 : 6'd41)
+                                         : 6'd0;          // -  ->  =
             default: case (idx)                  // RET
                 2'd0: label4 = 6'd18;  // R
                 2'd1: label4 = 6'd5;   // E
@@ -158,20 +170,27 @@ module jr100_vkb_overlay (
         endcase
     endfunction
 
+    // With CTL locked, the V key shows "GR" - the one non-obvious control
+    // combination (CTRL+V toggles the ROM's GRAPH mode). Other shortcuts
+    // stay unlabelled; they are ROM behaviour, not keycap legends.
+    wire       v_gr = ctl_held && !wide && (vrow == 3'd3) && (vcol == 4'd3);
+
     // glyph origin inside the cell
     wire [9:0] text_x0  = wide ? ((vcol == 4'd1) ? 10'd8 :        // SHFT (4 ch)
                                   (vcol == 4'd3) ? 10'd20 :       // -    (1 ch)
                                                    10'd12)        // 3 ch
-                               : 10'd8;                           // 1 ch centred
+                               : (v_gr ? 10'd4 : 10'd8);          // 2 ch / 1 ch
     wire [9:0] gx    = lx - text_x0;
     wire       gvalid = (ly >= 10'd3) && (ly < 10'd11) &&
-                        (gx < (wide ? 10'd32 : 10'd8));
+                        (gx < (wide ? 10'd32 : v_gr ? 10'd16 : 10'd8));
     wire [1:0] gidx  = gx[4:3];                  // glyph number in the cell
     wire [2:0] gcol  = gx[2:0];
     wire [3:0] grow4 = ly[3:0] - 4'd3;           // ly is 3..10 while gvalid
     wire [2:0] grow  = grow4[2:0];
 
-    wire [5:0] code = wide ? label4(vcol, gidx) : label0(vrow, vcol);
+    wire [5:0] code = wide ? label4(vcol, gidx, shift_held) :
+                      v_gr ? (gidx[0] ? 6'd18 : 6'd7) :  // G, R
+                             label0(vrow, vcol, shift_held);
     wire [7:0] font_bits;
 
     jr100_vkb_font font (
