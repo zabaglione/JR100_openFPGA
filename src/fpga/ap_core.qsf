@@ -743,6 +743,8 @@ set_global_assignment -name VERILOG_FILE core/jr100_pll_0002.v
 set_global_assignment -name VERILOG_FILE core/apf_video_pll.v
 set_global_assignment -name VERILOG_FILE core/apf_video_pll_0002.v
 set_global_assignment -name SYSTEMVERILOG_FILE core/data_loader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE core/sound_i2s.sv
+set_global_assignment -name SYSTEMVERILOG_FILE core/sync_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/jr100_pocket_input.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/jr100_vkb_overlay.sv
 set_global_assignment -name SYSTEMVERILOG_FILE jr100/mb8861.sv
