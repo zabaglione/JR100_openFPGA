@@ -664,14 +664,23 @@ end
 
 // Scaler clocks, both 50% duty and 90 degrees apart.
 //
-// video_rgb_clock's rising edge must land on the SAME edge that advances the
-// video registers - it is the edge that launches the DDR word - with
-// video_rgb_clock_90 a quarter period later for the scaler. Centring the
-// rising edge in the data window instead (which looks better for setup/hold)
-// makes the scaler reconstruct colour components from adjacent pixels: on
-// hardware that showed up as a picture reduced to pure white and pure black,
-// the only two colours that survive having their components mixed with a
-// neighbour. Same relationship PocketCPC uses, scaled from its /4 to our /8.
+// The phase relationship is taken edge by edge from PocketCPC, whose /4
+// divider works on hardware. Normalising to D, the edge on which the video
+// registers advance:
+//
+//     data update            D
+//     video_rgb_clock    rise D - 90deg      fall D + 90deg
+//     video_rgb_clock_90 rise D              fall D + 180deg
+//
+// So the launching edge sits a quarter period BEFORE the data changes, and it
+// is the 90-degree clock that lines up with the data. Here cen_pix is high
+// throughout pix_phase 7, so the registers advance on the 7->0 edge and
+// D = 7. A quarter period is two system cycles.
+//
+// Getting this wrong is not subtle on hardware: at D + 180deg the picture
+// collapsed to pure white and pure black, the only two colours that survive
+// having their components mixed with a neighbouring pixel, and at D the
+// screen went blank.
     reg         pix_clk    = 1'b0;
     reg         pix_clk_90 = 1'b0;
 always @(posedge clk_sys) begin
@@ -679,10 +688,10 @@ always @(posedge clk_sys) begin
         pix_clk    <= 1'b0;
         pix_clk_90 <= 1'b0;
     end else begin
-        if (pix_phase == 3'd7) pix_clk    <= 1'b1;  // same edge as the data
-        if (pix_phase == 3'd3) pix_clk    <= 1'b0;
-        if (pix_phase == 3'd1) pix_clk_90 <= 1'b1;  // 90 degrees later
-        if (pix_phase == 3'd5) pix_clk_90 <= 1'b0;
+        if (pix_phase == 3'd5) pix_clk    <= 1'b1;  // D - 90deg
+        if (pix_phase == 3'd1) pix_clk    <= 1'b0;
+        if (pix_phase == 3'd7) pix_clk_90 <= 1'b1;  // D, with the data
+        if (pix_phase == 3'd3) pix_clk_90 <= 1'b0;
     end
 end
 
