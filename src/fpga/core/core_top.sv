@@ -324,6 +324,9 @@ always @(*) begin
     default: begin
         bridge_rd_data <= 0;
     end
+    32'h3xxxxxxx: begin
+        bridge_rd_data <= save_rd_data;
+    end
     32'hF8xxxxxx: begin
         bridge_rd_data <= cmd_bridge_rd_data;
     end
@@ -387,19 +390,19 @@ end
 // bridge target commands
 // synchronous to clk_74a
 
-    reg             target_dataslot_read;
-    reg             target_dataslot_write;
-    reg             target_dataslot_getfile;    // require additional param/resp structs to be mapped
-    reg             target_dataslot_openfile;   // require additional param/resp structs to be mapped
+    wire            target_dataslot_read = 1'b0;
+    wire            target_dataslot_write;
+    wire            target_dataslot_getfile = 1'b0;
+    wire            target_dataslot_openfile = 1'b0;
 
     wire            target_dataslot_ack;
     wire            target_dataslot_done;
     wire    [2:0]   target_dataslot_err;
 
-    reg     [15:0]  target_dataslot_id;
-    reg     [31:0]  target_dataslot_slotoffset;
-    reg     [31:0]  target_dataslot_bridgeaddr;
-    reg     [31:0]  target_dataslot_length;
+    wire    [15:0]  target_dataslot_id;
+    wire    [31:0]  target_dataslot_slotoffset;
+    wire    [31:0]  target_dataslot_bridgeaddr;
+    wire    [31:0]  target_dataslot_length;
 
     wire    [31:0]  target_buffer_param_struct; // to be mapped/implemented when using some Target commands
     wire    [31:0]  target_buffer_resp_struct;  // to be mapped/implemented when using some Target commands
@@ -493,17 +496,6 @@ core_bridge_cmd icb (
 
 );
 
-// Target commands are unused until the data-slot loader lands (P2-1).
-always @(posedge clk_74a) begin
-    target_dataslot_read       <= 0;
-    target_dataslot_write      <= 0;
-    target_dataslot_getfile    <= 0;
-    target_dataslot_openfile   <= 0;
-    target_dataslot_id         <= 0;
-    target_dataslot_slotoffset <= 0;
-    target_dataslot_bridgeaddr <= 0;
-    target_dataslot_length     <= 0;
-end
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -666,6 +658,50 @@ jr100_prog_feeder #(
     .feeding      (  )
 );
 
+// BASIC save write-back: jr100_saver's sector protocol -> target_dataslot_write
+    wire        img_mounted, img_readonly;
+    wire [63:0] img_size;
+    wire [31:0] sd_lba;
+    wire        sd_wr, sd_ack;
+    wire [8:0]  sd_buff_addr;
+    wire [7:0]  sd_buff_din;
+    wire [31:0] save_rd_data;
+
+jr100_save_bridge #(
+    .SLOT_ID    ( 16'd3 ),
+    .BRIDGEADDR ( 32'h30000000 )
+) save_bridge (
+    .clk      ( clk_sys ),
+    .rst      ( rst_sys ),
+    .clk_74a  ( clk_74a ),
+
+    .dataslot_requestwrite      ( dataslot_requestwrite ),
+    .dataslot_requestwrite_id   ( dataslot_requestwrite_id ),
+    .dataslot_requestwrite_size ( dataslot_requestwrite_size ),
+    .dataslot_allcomplete       ( dataslot_allcomplete ),
+
+    .img_mounted  ( img_mounted ),
+    .img_readonly ( img_readonly ),
+    .img_size     ( img_size ),
+    .sd_lba       ( sd_lba ),
+    .sd_wr        ( sd_wr ),
+    .sd_ack       ( sd_ack ),
+    .sd_buff_addr ( sd_buff_addr ),
+    .sd_buff_din  ( sd_buff_din ),
+
+    .bridge_addr    ( bridge_addr ),
+    .bridge_rd_data ( save_rd_data ),
+
+    .target_dataslot_write      ( target_dataslot_write ),
+    .target_dataslot_id         ( target_dataslot_id ),
+    .target_dataslot_slotoffset ( target_dataslot_slotoffset ),
+    .target_dataslot_bridgeaddr ( target_dataslot_bridgeaddr ),
+    .target_dataslot_length     ( target_dataslot_length ),
+    .target_dataslot_ack        ( target_dataslot_ack ),
+    .target_dataslot_done       ( target_dataslot_done ),
+    .target_dataslot_err        ( target_dataslot_err )
+);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Inputs: pad, dock USB keyboard, virtual keyboard
@@ -734,16 +770,15 @@ jr100_top jr100 (
     .bas_data       ( bas_data ),
     .bas_wait       ( bas_wait ),
 
-    // BASIC save (bridge write-back lands in P6-1)
     .save_req       ( save_pulse ),
-    .img_mounted    ( 1'b0 ),
-    .img_readonly   ( 1'b0 ),
-    .img_size       ( 64'd0 ),
-    .sd_lba         (  ),
-    .sd_wr          (  ),
-    .sd_ack         ( 1'b0 ),
-    .sd_buff_addr   ( 9'd0 ),
-    .sd_buff_din    (  ),
+    .img_mounted    ( img_mounted ),
+    .img_readonly   ( img_readonly ),
+    .img_size       ( img_size ),
+    .sd_lba         ( sd_lba ),
+    .sd_wr          ( sd_wr ),
+    .sd_ack         ( sd_ack ),
+    .sd_buff_addr   ( sd_buff_addr ),
+    .sd_buff_din    ( sd_buff_din ),
 
     .autostart_en   ( cfg_autostart_s ),
 

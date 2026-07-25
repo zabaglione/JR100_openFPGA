@@ -29,6 +29,15 @@
         "extensions": ["bas", "txt"],
         "size_maximum": "0x10000",
         "address": "0x20000000"
+      },
+      {
+        "name": "Save File",
+        "id": 3,
+        "required": false,
+        "parameters": "0x1",
+        "extensions": ["prg"],
+        "size_maximum": "0x10000",
+        "address": "0x40000000"
       }
     ]
   }
