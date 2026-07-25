@@ -8,7 +8,9 @@
         "required": true,
         "parameters": "0x9",
         "filename": "boot.rom",
-        "extensions": ["rom"],
+        "extensions": [
+          "rom"
+        ],
         "size_exact": "0x2000",
         "address": "0x00000000"
       },
@@ -17,7 +19,9 @@
         "id": 1,
         "required": false,
         "parameters": "0x9",
-        "extensions": ["prg"],
+        "extensions": [
+          "prg"
+        ],
         "size_maximum": "0x10000",
         "address": "0x10000000"
       },
@@ -26,27 +30,34 @@
         "id": 2,
         "required": false,
         "parameters": "0x9",
-        "extensions": ["bas", "txt"],
+        "extensions": [
+          "bas",
+          "txt"
+        ],
         "size_maximum": "0x10000",
         "address": "0x20000000"
       },
       {
-        "name": "Save File",
-        "id": 3,
-        "required": false,
-        "parameters": "0x1",
-        "extensions": ["prg"],
-        "size_maximum": "0x10000",
-        "address": "0x40000000"
-      },
-      {
-        "name": "Cassette",
+        "name": "Tape",
         "id": 4,
         "required": false,
         "parameters": "0x1",
         "deferload": true,
-        "extensions": ["cmt"],
+        "extensions": [
+          "cmt"
+        ],
         "address": "0x50000000"
+      },
+      {
+        "name": "Save Target",
+        "id": 3,
+        "required": false,
+        "parameters": "0x1",
+        "extensions": [
+          "prg"
+        ],
+        "size_maximum": "0x10000",
+        "address": "0x40000000"
       }
     ]
   }

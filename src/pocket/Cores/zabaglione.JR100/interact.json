@@ -3,6 +3,28 @@
     "magic": "APF_VER_1",
     "variables": [
       {
+        "name": "Tape Play",
+        "id": 6,
+        "type": "action",
+        "enabled": true,
+        "persist": false,
+        "writeonly": true,
+        "address": "0x0000F018",
+        "value": "0x00000001",
+        "mask": "0x00000000"
+      },
+      {
+        "name": "Save BASIC->Target",
+        "id": 5,
+        "type": "action",
+        "enabled": true,
+        "persist": false,
+        "writeonly": true,
+        "address": "0x0000F014",
+        "value": "0x00000001",
+        "mask": "0x00000000"
+      },
+      {
         "name": "Display Color",
         "id": 1,
         "type": "list",
@@ -12,14 +34,38 @@
         "defaultval": 0,
         "mask": "0xFFFFFFF8",
         "options": [
-          { "value": 0, "name": "White" },
-          { "value": 1, "name": "Green" },
-          { "value": 2, "name": "Amber" },
-          { "value": 3, "name": "Cyan" },
-          { "value": 4, "name": "Orange" },
-          { "value": 5, "name": "Blue" },
-          { "value": 6, "name": "Paper" },
-          { "value": 7, "name": "Mint" }
+          {
+            "value": 0,
+            "name": "White"
+          },
+          {
+            "value": 1,
+            "name": "Green"
+          },
+          {
+            "value": 2,
+            "name": "Amber"
+          },
+          {
+            "value": 3,
+            "name": "Cyan"
+          },
+          {
+            "value": 4,
+            "name": "Orange"
+          },
+          {
+            "value": 5,
+            "name": "Blue"
+          },
+          {
+            "value": 6,
+            "name": "Paper"
+          },
+          {
+            "value": 7,
+            "name": "Mint"
+          }
         ]
       },
       {
@@ -52,28 +98,6 @@
         "persist": false,
         "writeonly": true,
         "address": "0x0000F010",
-        "value": "0x00000001",
-        "mask": "0x00000000"
-      },
-      {
-        "name": "Save BASIC to File",
-        "id": 5,
-        "type": "action",
-        "enabled": true,
-        "persist": false,
-        "writeonly": true,
-        "address": "0x0000F014",
-        "value": "0x00000001",
-        "mask": "0x00000000"
-      },
-      {
-        "name": "Tape Play",
-        "id": 6,
-        "type": "action",
-        "enabled": true,
-        "persist": false,
-        "writeonly": true,
-        "address": "0x0000F018",
         "value": "0x00000001",
         "mask": "0x00000000"
       }
