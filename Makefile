@@ -22,10 +22,20 @@ VERSION := $(shell git describe --tags --always --match 'v*' 2>/dev/null || echo
 ZIP     := dist/$(CORE_ID)-$(VERSION).zip
 
 .DEFAULT_GOAL := build
-.PHONY: build package install dist clean
+.PHONY: build fetch package install dist clean
 
 build:
 	scripts/build_core.sh $(REVISION)
+
+# CI is the primary build path, so pull the staged package straight from the
+# latest successful run rather than compiling locally.
+fetch:
+	rm -rf $(PACKAGE_DIR)
+	mkdir -p $(PACKAGE_DIR)
+	gh run download $(RUN_ID) -n JR100-pocket-package -D $(PACKAGE_DIR)
+	@echo "fetched into $(PACKAGE_DIR)"
+
+RUN_ID ?= $(shell gh run list --workflow build-core --status success --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)
 
 $(BITSTREAM):
 	$(MAKE) build
@@ -45,13 +55,23 @@ package: $(BITSTREAM)
 	@if [ -d src/pocket/Assets ]; then cp -R src/pocket/Assets/. $(PACKAGE_DIR)/Assets/; fi
 	@echo "staged: $(PACKAGE_DIR)"
 
-install: package
+# Installs whatever is already staged in build/package - run 'make package'
+# after a local build, or 'make fetch' to take the latest CI artefact.
+install:
+	@test -d "$(PACKAGE_DIR)" || { \
+		echo "error: nothing staged in $(PACKAGE_DIR)."; \
+		echo "  Run 'make fetch' (latest CI build) or 'make package' (local build)."; \
+		exit 1; }
 	@test -d "$(POCKET_SD)" || { \
 		echo "error: $(POCKET_SD) not mounted."; \
 		echo "  Enable Tools > Developer > USB SD Access on the Pocket,"; \
 		echo "  or insert the microSD, then set POCKET_SD=/Volumes/<name>."; \
 		exit 1; }
-	cp -R $(PACKAGE_DIR)/. "$(POCKET_SD)/"
+	@# COPYFILE_DISABLE keeps macOS from scattering ._* AppleDouble files across
+	@# the card, which Analogue OS would otherwise list alongside the real files.
+	COPYFILE_DISABLE=1 cp -R $(PACKAGE_DIR)/. "$(POCKET_SD)/"
+	-find "$(POCKET_SD)/Cores" "$(POCKET_SD)/Platforms" "$(POCKET_SD)/Assets" -name '._*' -delete 2>/dev/null
+	sync
 	@echo "installed to $(POCKET_SD)"
 
 dist: package
