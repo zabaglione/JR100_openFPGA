@@ -174,13 +174,22 @@ module jr100_media_bridge #(
     // the BRAM writes from the snapshot.
     reg  [31:0] wbuf_hold;
 
+// The served word index is bridge_addr minus one. Hardware evidence: a
+// sector recorded to tape landed in the file shifted exactly one word
+// early (file word i held our word i+1, checksums intact), meaning the
+// OS's burst reader for target_dataslot_write pairs the data it captures
+// with the PREVIOUS transaction's address - consistent with
+// io_bridge_peripheral's prefetch design ("return the current value and
+// kickstart the next read"). Serving one word behind cancels that lead.
+// The RTL itself round-trips cleanly (tools/verify_media_sweeps.py and
+// the Verilator TB), so this is purely matching the host's pipelining.
 bram_block_dp #(
     .DATA ( 32 ),
     .ADDR ( 7 )
 ) wr_sector_buffer (
     .a_clk  ( clk_74a ),
     .a_wr   ( 1'b0 ),
-    .a_addr ( bridge_addr[8:2] ),
+    .a_addr ( bridge_addr[8:2] - 7'd1 ),
     .a_din  ( 32'd0 ),
     .a_dout ( bridge_rd_data ),
 
