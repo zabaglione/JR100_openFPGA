@@ -662,9 +662,16 @@ always @(posedge clk_sys) begin
     else                pix_phase <= pix_phase + 3'd1;
 end
 
-// Scaler clocks. Both are 50% duty and 90 degrees apart; video_rgb_clock rises
-// in the middle of the data window (phase 4), leaving four system cycles of
-// setup and four of hold around the sampling edge.
+// Scaler clocks, both 50% duty and 90 degrees apart.
+//
+// video_rgb_clock's rising edge must land on the SAME edge that advances the
+// video registers - it is the edge that launches the DDR word - with
+// video_rgb_clock_90 a quarter period later for the scaler. Centring the
+// rising edge in the data window instead (which looks better for setup/hold)
+// makes the scaler reconstruct colour components from adjacent pixels: on
+// hardware that showed up as a picture reduced to pure white and pure black,
+// the only two colours that survive having their components mixed with a
+// neighbour. Same relationship PocketCPC uses, scaled from its /4 to our /8.
     reg         pix_clk    = 1'b0;
     reg         pix_clk_90 = 1'b0;
 always @(posedge clk_sys) begin
@@ -672,10 +679,10 @@ always @(posedge clk_sys) begin
         pix_clk    <= 1'b0;
         pix_clk_90 <= 1'b0;
     end else begin
-        if (pix_phase == 3'd3) pix_clk    <= 1'b1;
-        if (pix_phase == 3'd7) pix_clk    <= 1'b0;
-        if (pix_phase == 3'd5) pix_clk_90 <= 1'b1;
-        if (pix_phase == 3'd1) pix_clk_90 <= 1'b0;
+        if (pix_phase == 3'd7) pix_clk    <= 1'b1;  // same edge as the data
+        if (pix_phase == 3'd3) pix_clk    <= 1'b0;
+        if (pix_phase == 3'd1) pix_clk_90 <= 1'b1;  // 90 degrees later
+        if (pix_phase == 3'd5) pix_clk_90 <= 1'b0;
     end
 end
 
@@ -704,40 +711,54 @@ always @(posedge clk_sys) begin
     end
 end
 
-    wire [7:0]  marker_y = frame_count[7:0];
-    wire        in_border = (act_x == 9'd0) || (act_x == 9'd255) ||
-                            (act_y == 9'd0) || (act_y == 9'd191);
+// Eight colours. Only pure white and pure black survive a scaler that is
+// mixing colour components between neighbouring pixels, so anything else
+// appearing on screen means the DDR phase is right.
+    function automatic [23:0] palette(input [2:0] idx);
+        case (idx)
+            3'd0: palette = 24'hFFFFFF;  // white
+            3'd1: palette = 24'hFFFF00;  // yellow
+            3'd2: palette = 24'h00FFFF;  // cyan
+            3'd3: palette = 24'h00FF00;  // green
+            3'd4: palette = 24'hFF00FF;  // magenta
+            3'd5: palette = 24'hFF0000;  // red
+            3'd6: palette = 24'h0000FF;  // blue
+            3'd7: palette = 24'h404040;  // grey
+        endcase
+    endfunction
+
+// Left half is vertical bars, right half horizontal bands. If the two axes
+// ever get confused the picture says so immediately.
+    wire [23:0] bars_rgb  = palette(act_x[6:4]);
+    wire [23:0] bands_rgb = palette(act_y[7:5]);
+
+    wire [7:0]  marker_y  = frame_count[7:0];
+    wire        in_border = (act_x < 9'd2) || (act_x >= 9'd254) ||
+                            (act_y < 9'd2) || (act_y >= 9'd190);
     wire        in_marker = (act_x >= 9'd120) && (act_x < 9'd136) &&
                             (act_y >= {1'b0, marker_y}) &&
                             (act_y <  {1'b0, marker_y} + 9'd8) &&
                             (marker_y < 8'd184);
 
-    reg [23:0]  bar_rgb;
-always @(*) begin
-    case (act_x[7:5])
-        3'd0: bar_rgb = 24'hFFFFFF;
-        3'd1: bar_rgb = 24'hFFFF00;
-        3'd2: bar_rgb = 24'h00FFFF;
-        3'd3: bar_rgb = 24'h00FF00;
-        3'd4: bar_rgb = 24'hFF00FF;
-        3'd5: bar_rgb = 24'hFF0000;
-        3'd6: bar_rgb = 24'h0000FF;
-        3'd7: bar_rgb = 24'h202020;
-    endcase
-end
+// A 16x16 probe in the top-left corner shows the machine's own pixel. It is
+// confined to that square so the rest of the screen stays a clean reference,
+// but it must stay in the visible path: when the pattern simply overrode
+// vid_pixel, it became dead logic and Quartus removed the CPU, the VIA and
+// every BRAM with it - that build fitted in 435 ALMs and 8 Kbit, the same as
+// an empty core.
+    wire        in_probe = (act_x >= 9'd4) && (act_x < 9'd20) &&
+                           (act_y >= 9'd4) && (act_y < 9'd20);
 
-    wire [23:0] pattern_rgb = in_marker ? 24'hFFFFFF :
-                              in_border ? 24'hFF8000 : bar_rgb;
+    wire [23:0] pattern_rgb = in_border ? 24'hFF8000 :
+                              in_probe  ? (vid_pixel ? 24'hFFFFFF : 24'h000000) :
+                              in_marker ? 24'hFFFFFF :
+                              act_x[7]  ? bands_rgb :
+                                          bars_rgb;
 
-// JR-100 picture over the bring-up background. The display colour is
-// selectable on MiSTer; white until the interact.json plumbing lands in P7-1.
-//
-// The machine's own pixel has to stay in the visible path even while the
-// pattern is up: with the pattern simply overriding it, vid_pixel became dead
-// logic and Quartus removed the CPU, the VIA and every BRAM along with it -
-// the first build fitted in 435 ALMs and 8 Kbit, the same as an empty core.
-    wire [23:0] active_rgb = vid_pixel       ? 24'hFFFFFF :
-                             BRINGUP_PATTERN ? pattern_rgb :
+// The display colour is selectable on MiSTer; white until the interact.json
+// plumbing lands in P7-1.
+    wire [23:0] active_rgb = BRINGUP_PATTERN ? pattern_rgb :
+                             vid_pixel       ? 24'hFFFFFF :
                                                24'h000000;
 
     reg [23:0]  vidout_rgb = 24'd0;
