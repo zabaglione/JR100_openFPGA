@@ -92,7 +92,9 @@ module jr100_vkb_overlay (
     // With SHIFT locked (or held) the labels switch to the shift plane taken
     // from the BASIC ROM's own key translation table (boot.rom 0x1A99):
     // 1!-9) 0^ on the digits row, U@ I(yen) O[ P] K? L/ ;+ M_ ,< .> :* -=.
-    // Keys the ROM maps to nothing keep their letter.
+    // Keys the ROM maps to nothing (all plain letters) go BLANK - confirmed
+    // on hardware: SHIFT+C etc. types nothing, so showing the letter there
+    // would be a lie.
     function automatic [5:0] label0(input [2:0] vr, input [3:0] vc,
                                     input shifted);
         case (vr)
@@ -101,36 +103,36 @@ module jr100_vkb_overlay (
                                    : ((vc == 4'd9) ? 6'd27
                                                    : (6'd28 + {2'd0, vc})); // 1..9
             3'd1: case (vc)
-                4'd0: label0 = 6'd17;  // Q
-                4'd1: label0 = 6'd23;  // W
-                4'd2: label0 = 6'd5;   // E
-                4'd3: label0 = 6'd18;  // R
-                4'd4: label0 = 6'd20;  // T
-                4'd5: label0 = 6'd25;  // Y
+                4'd0: label0 = shifted ? 6'd0 : 6'd17;  // Q
+                4'd1: label0 = shifted ? 6'd0 : 6'd23;  // W
+                4'd2: label0 = shifted ? 6'd0 : 6'd5;   // E
+                4'd3: label0 = shifted ? 6'd0 : 6'd18;  // R
+                4'd4: label0 = shifted ? 6'd0 : 6'd20;  // T
+                4'd5: label0 = shifted ? 6'd0 : 6'd25;  // Y
                 4'd6: label0 = shifted ? 6'd56 : 6'd21; // U  ->  @
                 4'd7: label0 = shifted ? 6'd63 : 6'd9;  // I  ->  yen
                 4'd8: label0 = shifted ? 6'd58 : 6'd15; // O  ->  [
                 default: label0 = shifted ? 6'd59 : 6'd16; // P  ->  ]
             endcase
             3'd2: case (vc)
-                4'd0: label0 = 6'd1;   // A
-                4'd1: label0 = 6'd19;  // S
-                4'd2: label0 = 6'd4;   // D
-                4'd3: label0 = 6'd6;   // F
-                4'd4: label0 = 6'd7;   // G
-                4'd5: label0 = 6'd8;   // H
-                4'd6: label0 = 6'd10;  // J
+                4'd0: label0 = shifted ? 6'd0 : 6'd1;   // A
+                4'd1: label0 = shifted ? 6'd0 : 6'd19;  // S
+                4'd2: label0 = shifted ? 6'd0 : 6'd4;   // D
+                4'd3: label0 = shifted ? 6'd0 : 6'd6;   // F
+                4'd4: label0 = shifted ? 6'd0 : 6'd7;   // G
+                4'd5: label0 = shifted ? 6'd0 : 6'd8;   // H
+                4'd6: label0 = shifted ? 6'd0 : 6'd10;  // J
                 4'd7: label0 = shifted ? 6'd60 : 6'd11; // K  ->  ?
                 4'd8: label0 = shifted ? 6'd61 : 6'd12; // L  ->  /
                 default: label0 = shifted ? 6'd52 : 6'd37; // ;  ->  +
             endcase
             default: case (vc)
-                4'd0: label0 = 6'd26;  // Z
-                4'd1: label0 = 6'd24;  // X
-                4'd2: label0 = 6'd3;   // C
-                4'd3: label0 = 6'd22;  // V
-                4'd4: label0 = 6'd2;   // B
-                4'd5: label0 = 6'd14;  // N
+                4'd0: label0 = shifted ? 6'd0 : 6'd26;  // Z
+                4'd1: label0 = shifted ? 6'd0 : 6'd24;  // X
+                4'd2: label0 = shifted ? 6'd0 : 6'd3;   // C
+                4'd3: label0 = shifted ? 6'd0 : 6'd22;  // V
+                4'd4: label0 = shifted ? 6'd0 : 6'd2;   // B
+                4'd5: label0 = shifted ? 6'd0 : 6'd14;  // N
                 4'd6: label0 = shifted ? 6'd62 : 6'd13; // M  ->  _
                 4'd7: label0 = shifted ? 6'd53 : 6'd38; // ,  ->  <
                 4'd8: label0 = shifted ? 6'd54 : 6'd39; // .  ->  >
