@@ -585,7 +585,7 @@ synch_3 s_downloading (~dataslot_allcomplete, downloading_s, clk_sys);
 
     wire [44:0] key_matrix;
     wire [7:0]  joy_status;
-    wire        vkb_active, vkb_pressed, vkb_shift, vkb_ctl, vkb_graph;
+    wire        vkb_active, vkb_pressed, vkb_shift, vkb_ctl;
     wire [2:0]  vkb_row;
     wire [3:0]  vkb_col;
 
@@ -608,8 +608,7 @@ jr100_pocket_input pocket_input (
     .vkb_col     ( vkb_col ),
     .vkb_pressed ( vkb_pressed ),
     .vkb_shift   ( vkb_shift ),
-    .vkb_ctl     ( vkb_ctl ),
-    .vkb_graph   ( vkb_graph )
+    .vkb_ctl     ( vkb_ctl )
 );
 
 
@@ -691,6 +690,10 @@ jr100_top jr100 (
 
     .cen_pix_out    ( cen_pix ),
 
+    .dbg_bus_addr   ( bus_addr ),
+    .dbg_bus_wdata  ( bus_wdata ),
+    .dbg_bus_we     ( bus_we ),
+
     .cen_cpu_out    (  ),
     .boundary       (  ),
     .dbg_pc         (  ),
@@ -713,6 +716,32 @@ jr100_top jr100 (
     .dbg_t2         (  ),
     .dbg_t2l        (  )
 );
+
+
+////////////////////////////////////////////////////////////////////////////////
+// GRAPH-mode flag, snooped from the machine itself.
+//
+// The ROM keeps its GRAPH-mode state in work RAM at 0x0014 (0x00 normal,
+// 0x10 GRAPH; found by diffing work RAM across CTRL+V in the reference
+// emulator, docs/KEYBOARD.md). Watching the CPU bus for writes to that byte
+// tracks the real state exactly - including presses the ROM ignored, RETURN
+// cancellation, and even a program POKEing the flag - which guessing from
+// keystrokes could not (mismatch seen on hardware).
+////////////////////////////////////////////////////////////////////////////////
+
+    wire [15:0] bus_addr;
+    wire [7:0]  bus_wdata;
+    wire        bus_we;
+
+    localparam [15:0] GRAPH_FLAG_ADDR = 16'h0014;
+
+    reg         graph_flag = 1'b0;
+always @(posedge clk_sys) begin
+    if (rst_sys | downloading_s)
+        graph_flag <= 1'b0;
+    else if (bus_we && (bus_addr == GRAPH_FLAG_ADDR))
+        graph_flag <= (bus_wdata != 8'h00);
+end
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -860,7 +889,7 @@ synch_3         s_vkb_a (vkb_active,  vkb_active_v,  clk_vid);
 synch_3         s_vkb_p (vkb_pressed, vkb_pressed_v, clk_vid);
 synch_3         s_vkb_s (vkb_shift,   vkb_shift_v,   clk_vid);
 synch_3         s_vkb_c (vkb_ctl,     vkb_ctl_v,     clk_vid);
-synch_3         s_vkb_g (vkb_graph,   vkb_graph_v,   clk_vid);
+synch_3         s_vkb_g (graph_flag,  vkb_graph_v,   clk_vid);
 synch_3 #(3)    s_vkb_r (vkb_row,     vkb_row_v,     clk_vid);
 synch_3 #(4)    s_vkb_l (vkb_col,     vkb_col_v,     clk_vid);
 

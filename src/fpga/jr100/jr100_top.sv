@@ -97,6 +97,14 @@ module jr100_top
     // clock enables (CE_PIXEL for the MiSTer video pipeline)
     output logic        cen_pix_out,
 
+    // CPU bus observation tap (openFPGA port addition, PROVENANCE.md):
+    // a passive view of the CPU-side memory bus so the wrapper can snoop
+    // ROM work-RAM state (e.g. the GRAPH-mode flag) without touching the
+    // machine. Pure outputs; no behavioural change.
+    output logic [15:0] dbg_bus_addr,
+    output logic [7:0]  dbg_bus_wdata,
+    output logic        dbg_bus_we,
+
     // debug/trace (same set as jr100_core)
     output logic        cen_cpu_out,
     output logic        boundary,
@@ -165,6 +173,11 @@ module jr100_top
     logic [7:0]  ext_rdata;
     logic [15:0] vid_addr;
     logic [7:0]  vid_rdata;
+
+    // passive bus tap (see port comment)
+    assign dbg_bus_addr  = ext_addr;
+    assign dbg_bus_wdata = ext_wdata;
+    assign dbg_bus_we    = ext_we;
 
     jr100_core core
     (
