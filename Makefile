@@ -42,7 +42,7 @@ package: $(BITSTREAM)
 	else \
 		echo "note: no platform artwork ($(PLATFORM_ID).bin), packaging without it"; \
 	fi
-	cp -R src/pocket/Assets/. $(PACKAGE_DIR)/Assets/
+	@if [ -d src/pocket/Assets ]; then cp -R src/pocket/Assets/. $(PACKAGE_DIR)/Assets/; fi
 	@echo "staged: $(PACKAGE_DIR)"
 
 install: package
