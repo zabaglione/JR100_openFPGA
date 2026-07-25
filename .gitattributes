@@ -1,0 +1,4 @@
+# Analogue's APF sources and Quartus-generated files ship with CRLF.
+# Disable all end-of-line normalisation so imported files stay byte-identical
+# to upstream, which keeps diffs against core-template readable.
+* -text
