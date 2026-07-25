@@ -44,6 +44,12 @@ package: $(BITSTREAM)
 	rm -rf $(PACKAGE_DIR)
 	mkdir -p $(CORE_DIR) $(PACKAGE_DIR)/Platforms/_images $(PACKAGE_DIR)/Assets
 	cp src/pocket/Cores/$(CORE_ID)/*.json $(CORE_DIR)/
+	@# icon.bin / info.txt are optional per the docs but every complete core ships them
+	@for f in icon.bin info.txt; do \
+		if [ -f src/pocket/Cores/$(CORE_ID)/$$f ]; then \
+			cp src/pocket/Cores/$(CORE_ID)/$$f $(CORE_DIR)/; \
+		fi; \
+	done
 	cp $(BITSTREAM) $(CORE_DIR)/bitstream.rbf_r
 	cp src/pocket/Platforms/$(PLATFORM_ID).json $(PACKAGE_DIR)/Platforms/
 	@# Platform artwork is optional; its encoding is still unresolved (see docs/PLAN.md)

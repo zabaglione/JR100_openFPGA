@@ -339,8 +339,8 @@ end
 
 // bridge host commands
 // synchronous to clk_74a
-    wire            status_boot_done = pll_core_locked_s;
-    wire            status_setup_done = pll_core_locked_s; // rising edge triggers a target command
+    wire            status_boot_done = pll_core_locked_s & pll_video_locked_s;
+    wire            status_setup_done = pll_core_locked_s & pll_video_locked_s; // rising edge triggers a target command
     wire            status_running = reset_n; // we are running as soon as reset_n goes high
 
     wire            dataslot_requestread;
@@ -517,8 +517,10 @@ end
     wire    clk_sys;            // 57.272727 MHz
     wire    pll_core_locked;
     wire    pll_core_locked_s;
+    wire    pll_video_locked_s;
 
-synch_3 s_pll_lock (pll_core_locked, pll_core_locked_s, clk_74a);
+synch_3 s_pll_lock  (pll_core_locked,  pll_core_locked_s,  clk_74a);
+synch_3 s_vpll_lock (pll_video_locked, pll_video_locked_s, clk_74a);
 
 jr100_pll pll (
     .refclk         ( clk_74a ),
@@ -640,89 +642,115 @@ jr100_top jr100 (
 ////////////////////////////////////////////////////////////////////////////////
 // Video output to the APF scaler
 //
-// The JR-100 raster is 448x256 total with a 256x192 active window, a 7.159091
-// MHz dot clock and a 62.4 Hz frame rate. That is the real machine's own
-// composite format and deliberately not NTSC standard.
+// The JR-100's native raster (7.159 MHz dot, 448x256 total, 62.4 Hz, a sync
+// format deliberately not NTSC) stays entirely inside the machine. Driving
+// the scaler's DDR link directly from that raster with a fabric-divided clock
+// failed on hardware at three different phases, so the output stage instead
+// stands on the one configuration this exact device has already proven: the
+// core-template's 12.288 MHz PLL clock pair and 320x240@60 scan, with the
+// machine's picture carried across in a dual-clock framebuffer.
 //
-// APF wants single-cycle HS/VS strobes rather than the level syncs jr100_video
-// produces, so they are generated from the raster counters directly, which
-// makes their position explicit.
+// video_rgb_clock is not a status signal - apf_top uses it as the outclock of
+// the DDIO cells that serialise RGB to 12-bit DDR, and video_rgb_clock_90
+// drives the DDIO cell that forms the scaler's clock pin. Template style,
+// both are true PLL outputs and the scan/data registers run on the 0-degree
+// clock, so every path the DDR link depends on is PLL-to-PLL and constrained
+// by derive_pll_clocks.
+//
+// The JR-100 being monochrome is what makes the bridge cheap: 256x192 at 1bpp
+// is 48 Kbit, 1.5% of BRAM. Writer (62.4 Hz) and reader (60.0 Hz) free-run,
+// so a moving image can show a slow tear line; on this machine's text-centric
+// output that is acceptable, and fixing it later only needs a second buffer.
 ////////////////////////////////////////////////////////////////////////////////
+
+// -- write side: the native raster drops its active window into the buffer --
 
     localparam [8:0] H_ACT_START = 9'd64;   // jr100_video H_ACT_START
     localparam [8:0] V_ACT_START = 9'd35;   // jr100_video V_ACT_START
 
-// The pixel phase counter tracks jr100_top's own /8 enable: cen_pix is high on
-// the last cycle of a pixel, so pix_phase is 0 on the cycle where new video
-// data becomes valid and 7 on its last stable cycle.
-    reg  [2:0]  pix_phase = 3'd0;
-always @(posedge clk_sys) begin
-    if (rst_sys)        pix_phase <= 3'd0;
-    else if (cen_pix)   pix_phase <= 3'd0;
-    else                pix_phase <= pix_phase + 3'd1;
-end
+    wire [8:0]  act_x = vid_hcnt - H_ACT_START;   // 0..255 while vid_de
+    wire [8:0]  act_y = vid_vcnt - V_ACT_START;   // 0..191 while vid_de
 
-// Scaler clocks, both 50% duty and 90 degrees apart.
-//
-// The phase relationship is taken edge by edge from PocketCPC, whose /4
-// divider works on hardware. Normalising to D, the edge on which the video
-// registers advance:
-//
-//     data update            D
-//     video_rgb_clock    rise D - 90deg      fall D + 90deg
-//     video_rgb_clock_90 rise D              fall D + 180deg
-//
-// So the launching edge sits a quarter period BEFORE the data changes, and it
-// is the 90-degree clock that lines up with the data. Here cen_pix is high
-// throughout pix_phase 7, so the registers advance on the 7->0 edge and
-// D = 7. A quarter period is two system cycles.
-//
-// Getting this wrong is not subtle on hardware: at D + 180deg the picture
-// collapsed to pure white and pure black, the only two colours that survive
-// having their components mixed with a neighbouring pixel, and at D the
-// screen went blank.
-    reg         pix_clk    = 1'b0;
-    reg         pix_clk_90 = 1'b0;
-always @(posedge clk_sys) begin
-    if (rst_sys) begin
-        pix_clk    <= 1'b0;
-        pix_clk_90 <= 1'b0;
-    end else begin
-        if (pix_phase == 3'd5) pix_clk    <= 1'b1;  // D - 90deg
-        if (pix_phase == 3'd1) pix_clk    <= 1'b0;
-        if (pix_phase == 3'd7) pix_clk_90 <= 1'b1;  // D, with the data
-        if (pix_phase == 3'd3) pix_clk_90 <= 1'b0;
-    end
-end
+// -- scanout clock pair: 12.288 MHz at 0 and 90 degrees, template-identical --
 
-// Active-window coordinates, valid while vid_de is high.
-    wire [8:0]  act_x = vid_hcnt - H_ACT_START;
-    wire [8:0]  act_y = vid_vcnt - V_ACT_START;
+    wire    clk_vid;
+    wire    clk_vid_90;
+    wire    pll_video_locked;
 
-// ---------------------------------------------------------------------------
-// Bring-up pattern. Nothing loads the ROM yet, so the JR-100 raster is blank
-// and a black screen would not distinguish "scaler locked" from "no signal".
-// The pattern draws a one-pixel border, eight colour bars and a marker that
-// steps one line per frame, which makes the lock, the active-area size and the
-// vertical cadence all visible on the device. Removed in P2-1.
-// ---------------------------------------------------------------------------
-    localparam bit BRINGUP_PATTERN = 1'b1;
+apf_video_pll vpll (
+    .refclk   ( clk_74a ),
+    .rst      ( 1'b0 ),
+    .outclk_0 ( clk_vid ),
+    .outclk_1 ( clk_vid_90 ),
+    .locked   ( pll_video_locked )
+);
 
-    reg [15:0]  frame_count = 16'd0;
-    reg         vs_seen = 1'b0;
-always @(posedge clk_sys) begin
-    if (rst_sys) begin
-        frame_count <= 16'd0;
-        vs_seen     <= 1'b0;
-    end else if (cen_pix) begin
-        vs_seen <= vid_vs;
-        if (vid_vs & ~vs_seen) frame_count <= frame_count + 16'd1;
-    end
-end
+    wire    reset_n_vid;
+synch_3 s_reset_vid (reset_n & pll_video_locked, reset_n_vid, clk_vid);
 
-// Eight colours. Only pure white and pure black survive a scaler that is
-// mixing colour components between neighbouring pixels, so anything else
-// appearing on screen means the DDR phase is right.
+// -- scanout raster: 320x240 active in 400x512 total = 60.0 Hz exactly ------
+
+    localparam [9:0] VID_H_BPORCH = 10'd10;
+    localparam [9:0] VID_H_ACTIVE = 10'd320;
+    localparam [9:0] VID_H_TOTAL  = 10'd400;
+    localparam [9:0] VID_V_BPORCH = 10'd10;
+    localparam [9:0] VID_V_ACTIVE = 10'd240;
+    localparam [9:0] VID_V_TOTAL  = 10'd512;
+
+// the 256x192 framebuffer window, centred in the 320x240 active area
+    localparam [9:0] FB_X0 = VID_H_BPORCH + 10'd32;
+    localparam [9:0] FB_Y0 = VID_V_BPORCH + 10'd24;
+
+    reg  [9:0]  x_count = '0;
+    reg  [9:0]  y_count = '0;
+
+// The BRAM read is synchronous with one cycle of latency, so the address is
+// issued for the NEXT scan position and the data arrives exactly when the
+// counter reaches it.
+    wire [9:0]  nx        = (x_count == VID_H_TOTAL - 10'd1) ? 10'd0
+                                                             : x_count + 10'd1;
+    wire [9:0]  fb_rd_x10 = nx      - FB_X0;
+    wire [9:0]  fb_rd_y10 = y_count - FB_Y0;
+
+    wire        fb_pix;
+
+bram_block_dp #(
+    .DATA ( 1 ),
+    .ADDR ( 16 )
+) framebuffer (
+    .a_clk  ( clk_sys ),
+    .a_wr   ( cen_pix & vid_de ),
+    .a_addr ( {act_y[7:0], act_x[7:0]} ),
+    .a_din  ( vid_pixel ),
+    .a_dout (  ),
+
+    .b_clk  ( clk_vid ),
+    .b_wr   ( 1'b0 ),
+    .b_addr ( {fb_rd_y10[7:0], fb_rd_x10[7:0]} ),
+    .b_din  ( 1'b0 ),
+    .b_dout ( fb_pix )
+);
+
+// -- picture composition, all in scanout coordinates ------------------------
+
+    wire [9:0]  vx = x_count - VID_H_BPORCH;   // 0..319 inside the active area
+    wire [9:0]  vy = y_count - VID_V_BPORCH;   // 0..239
+
+    wire in_active = (x_count >= VID_H_BPORCH) &&
+                     (x_count <  VID_H_BPORCH + VID_H_ACTIVE) &&
+                     (y_count >= VID_V_BPORCH) &&
+                     (y_count <  VID_V_BPORCH + VID_V_ACTIVE);
+    wire in_fb     = (x_count >= FB_X0) && (x_count < FB_X0 + 10'd256) &&
+                     (y_count >= FB_Y0) && (y_count < FB_Y0 + 10'd192);
+
+// Bring-up dressing around the framebuffer window: an orange ring at the
+// active-area edge, colour bars across the top band (any colour other than
+// black or white proves the DDR link carries components intact), and a marker
+// sweeping one pixel per frame along the bottom band to show the 60 Hz
+// cadence. The framebuffer window itself shows the machine - black until the
+// ROM loader lands in P2. Gated so P2 can turn the dressing off.
+    localparam bit BRINGUP_BANDS = 1'b1;
+
     function automatic [23:0] palette(input [2:0] idx);
         case (idx)
             3'd0: palette = 24'hFFFFFF;  // white
@@ -736,58 +764,63 @@ end
         endcase
     endfunction
 
-// Left half is vertical bars, right half horizontal bands. If the two axes
-// ever get confused the picture says so immediately.
-    wire [23:0] bars_rgb  = palette(act_x[6:4]);
-    wire [23:0] bands_rgb = palette(act_y[7:5]);
+    reg  [8:0]  marker_x = '0;
 
-    wire [7:0]  marker_y  = frame_count[7:0];
-    wire        in_border = (act_x < 9'd2) || (act_x >= 9'd254) ||
-                            (act_y < 9'd2) || (act_y >= 9'd190);
-    wire        in_marker = (act_x >= 9'd120) && (act_x < 9'd136) &&
-                            (act_y >= {1'b0, marker_y}) &&
-                            (act_y <  {1'b0, marker_y} + 9'd8) &&
-                            (marker_y < 8'd184);
-
-// A 16x16 probe in the top-left corner shows the machine's own pixel. It is
-// confined to that square so the rest of the screen stays a clean reference,
-// but it must stay in the visible path: when the pattern simply overrode
-// vid_pixel, it became dead logic and Quartus removed the CPU, the VIA and
-// every BRAM with it - that build fitted in 435 ALMs and 8 Kbit, the same as
-// an empty core.
-    wire        in_probe = (act_x >= 9'd4) && (act_x < 9'd20) &&
-                           (act_y >= 9'd4) && (act_y < 9'd20);
-
-    wire [23:0] pattern_rgb = in_border ? 24'hFF8000 :
-                              in_probe  ? (vid_pixel ? 24'hFFFFFF : 24'h000000) :
-                              in_marker ? 24'hFFFFFF :
-                              act_x[7]  ? bands_rgb :
-                                          bars_rgb;
+    wire in_ring   = (vx < 10'd2) || (vx >= 10'd318) ||
+                     (vy < 10'd2) || (vy >= 10'd238);
+    wire in_top    = (vy >= 10'd2)   && (vy < 10'd24);
+    wire in_bot    = (vy >= 10'd216) && (vy < 10'd238);
+    wire in_marker = in_bot && (vx >= {1'b0, marker_x}) &&
+                               (vx <  {1'b0, marker_x} + 10'd16);
 
 // The display colour is selectable on MiSTer; white until the interact.json
 // plumbing lands in P7-1.
-    wire [23:0] active_rgb = BRINGUP_PATTERN ? pattern_rgb :
-                             vid_pixel       ? 24'hFFFFFF :
-                                               24'h000000;
+    wire [23:0] fb_rgb   = fb_pix ? 24'hFFFFFF : 24'h000000;
+
+    wire [23:0] scan_rgb = !in_active     ? 24'h000000 :
+                           in_fb          ? fb_rgb :
+                           !BRINGUP_BANDS ? 24'h000000 :
+                           in_ring        ? 24'hFF8000 :
+                           in_marker      ? 24'hFFFFFF :
+                           in_top         ? palette(vx[7:5]) :
+                           in_bot         ? 24'h202020 :
+                                            24'h101010;
+
+// -- scan counters and registered outputs, template-style -------------------
 
     reg [23:0]  vidout_rgb = 24'd0;
     reg         vidout_de  = 1'b0;
     reg         vidout_hs  = 1'b0;
     reg         vidout_vs  = 1'b0;
-always @(posedge clk_sys) begin
-    if (rst_sys) begin
+
+always @(posedge clk_vid) begin
+    if (!reset_n_vid) begin
+        x_count    <= '0;
+        y_count    <= '0;
+        marker_x   <= '0;
         vidout_rgb <= 24'd0;
         vidout_de  <= 1'b0;
         vidout_hs  <= 1'b0;
         vidout_vs  <= 1'b0;
-    end else if (cen_pix) begin
-        vidout_de  <= vid_de;
-        vidout_rgb <= vid_de ? active_rgb : 24'h000000;
+    end else begin
+        vidout_vs <= 1'b0;
+        vidout_hs <= 1'b0;
 
-        // Single-cycle strobes. VS marks the top-left of the frame; HS follows
-        // a few dots later so the two never coincide.
-        vidout_vs  <= (vid_hcnt == 9'd0) && (vid_vcnt == 9'd0);
-        vidout_hs  <= (vid_hcnt == 9'd3);
+        x_count <= nx;
+        if (x_count == VID_H_TOTAL - 10'd1)
+            y_count <= (y_count == VID_V_TOTAL - 10'd1) ? 10'd0
+                                                        : y_count + 10'd1;
+
+        // single-cycle strobes in the back porch, a few clocks apart
+        if (x_count == 10'd0 && y_count == 10'd0) begin
+            vidout_vs <= 1'b1;
+            marker_x  <= (marker_x >= 9'd302) ? 9'd0 : marker_x + 9'd1;
+        end
+        if (x_count == 10'd3)
+            vidout_hs <= 1'b1;
+
+        vidout_de  <= in_active;
+        vidout_rgb <= scan_rgb;
     end
 end
 
@@ -796,11 +829,11 @@ assign video_de           = vidout_de;
 assign video_hs           = vidout_hs;
 assign video_vs           = vidout_vs;
 assign video_skip         = 1'b0;
-assign video_rgb_clock    = pix_clk;
-assign video_rgb_clock_90 = pix_clk_90;
+assign video_rgb_clock    = clk_vid;
+assign video_rgb_clock_90 = clk_vid_90;
 
-// jr100_top's level syncs are unused on this path; keep them observable so the
-// tools do not prune the ports.
+// unused machine outputs on this path; keep them observable so the tools do
+// not prune the ports.
     wire unused_syncs = vid_hs | vid_vs | jr_audio;
 
 

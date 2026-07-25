@@ -740,6 +740,8 @@ set_global_assignment -name QIP_FILE apf/apf.qip
 set_global_assignment -name SYSTEMVERILOG_FILE core/core_top.sv
 set_global_assignment -name VERILOG_FILE core/jr100_pll.v
 set_global_assignment -name VERILOG_FILE core/jr100_pll_0002.v
+set_global_assignment -name VERILOG_FILE core/apf_video_pll.v
+set_global_assignment -name VERILOG_FILE core/apf_video_pll_0002.v
 set_global_assignment -name SYSTEMVERILOG_FILE jr100/mb8861.sv
 set_global_assignment -name SYSTEMVERILOG_FILE jr100/jr100_via.sv
 set_global_assignment -name SYSTEMVERILOG_FILE jr100/jr100_video.sv
