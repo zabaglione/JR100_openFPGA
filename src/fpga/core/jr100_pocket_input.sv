@@ -59,7 +59,8 @@ module jr100_pocket_input (
     output reg  [3:0]  vkb_col,      // 0..9 (rows 0-3) / 0..4 (row 4)
     output wire        vkb_pressed,
     output wire        vkb_shift,
-    output wire        vkb_ctl
+    output wire        vkb_ctl,
+    output reg         vkb_graph     // tracked ROM GRAPH-mode state
 );
 
     // ------------------------------------------------------------------
@@ -307,6 +308,33 @@ module jr100_pocket_input (
                                         btn[BTN_UP],      // up
                                         btn[BTN_LEFT],    // left
                                         btn[BTN_RIGHT]};  // right
+        end
+    end
+
+    // ------------------------------------------------------------------
+    // GRAPH-mode tracking.
+    //
+    // The ROM's rules, measured against the reference emulator
+    // (docs/KEYBOARD.md): CTRL+V toggles GRAPH, any RETURN cancels it, and
+    // a machine reset starts in normal mode. All three are visible in the
+    // merged matrix this module produces, so the tracked state stays in
+    // step with the ROM regardless of which keyboard the keys came from.
+    // The overlay uses it to switch the key labels to the GRAPH legends.
+    // ------------------------------------------------------------------
+    reg ctlv_q, ret_q;
+    wire ctlv_now = key_matrix[0] & key_matrix[35];   // CTL + V
+    wire ret_now  = key_matrix[43];                   // RETURN
+
+    always @(posedge clk) begin
+        if (rst) begin
+            vkb_graph <= 1'b0;
+            ctlv_q    <= 1'b0;
+            ret_q     <= 1'b0;
+        end else begin
+            ctlv_q <= ctlv_now;
+            ret_q  <= ret_now;
+            if (ctlv_now & ~ctlv_q) vkb_graph <= ~vkb_graph;
+            if (ret_now & ~ret_q)   vkb_graph <= 1'b0;
         end
     end
 

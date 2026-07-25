@@ -585,13 +585,15 @@ synch_3 s_downloading (~dataslot_allcomplete, downloading_s, clk_sys);
 
     wire [44:0] key_matrix;
     wire [7:0]  joy_status;
-    wire        vkb_active, vkb_pressed, vkb_shift, vkb_ctl;
+    wire        vkb_active, vkb_pressed, vkb_shift, vkb_ctl, vkb_graph;
     wire [2:0]  vkb_row;
     wire [3:0]  vkb_col;
 
+// Reset covers ROM reloads too, so the tracked GRAPH state and the keyboard
+// come up clean whenever the machine itself restarts.
 jr100_pocket_input pocket_input (
     .clk         ( clk_sys ),
-    .rst         ( rst_sys ),
+    .rst         ( rst_sys | downloading_s ),
 
     .cont1_key   ( cont1_key ),
     .cont3_key   ( cont3_key ),
@@ -606,7 +608,8 @@ jr100_pocket_input pocket_input (
     .vkb_col     ( vkb_col ),
     .vkb_pressed ( vkb_pressed ),
     .vkb_shift   ( vkb_shift ),
-    .vkb_ctl     ( vkb_ctl )
+    .vkb_ctl     ( vkb_ctl ),
+    .vkb_graph   ( vkb_graph )
 );
 
 
@@ -850,22 +853,34 @@ bram_block_dp #(
 // changes at human speed, so plain synchronisers per field are enough - the
 // worst case is one frame of mixed cursor position.
     wire        vkb_active_v, vkb_pressed_v, vkb_shift_v, vkb_ctl_v;
+    wire        vkb_graph_v;
     wire [2:0]  vkb_row_v;
     wire [3:0]  vkb_col_v;
 synch_3         s_vkb_a (vkb_active,  vkb_active_v,  clk_vid);
 synch_3         s_vkb_p (vkb_pressed, vkb_pressed_v, clk_vid);
 synch_3         s_vkb_s (vkb_shift,   vkb_shift_v,   clk_vid);
 synch_3         s_vkb_c (vkb_ctl,     vkb_ctl_v,     clk_vid);
+synch_3         s_vkb_g (vkb_graph,   vkb_graph_v,   clk_vid);
 synch_3 #(3)    s_vkb_r (vkb_row,     vkb_row_v,     clk_vid);
 synch_3 #(4)    s_vkb_l (vkb_col,     vkb_col_v,     clk_vid);
+
+// The overlay reads its glyphs one clock ahead (BRAM latency), so it gets
+// next-pixel coordinates; its outputs line up with the current pixel just
+// like the framebuffer prefetch above.
+    wire        in_active_n = (nx >= VID_H_BPORCH) &&
+                              (nx <  VID_H_BPORCH + VID_H_ACTIVE) &&
+                              (y_count >= VID_V_BPORCH) &&
+                              (y_count <  VID_V_BPORCH + VID_V_ACTIVE);
 
     wire        ovl_hit;
     wire [23:0] ovl_rgb;
 
 jr100_vkb_overlay vkb_overlay (
-    .vx         ( vx ),
-    .vy         ( vy ),
-    .in_active  ( in_active ),
+    .clk        ( clk_vid ),
+
+    .nx         ( nx - VID_H_BPORCH ),
+    .ny         ( y_count - VID_V_BPORCH ),
+    .in_active_n( in_active_n ),
 
     .active     ( vkb_active_v ),
     .cur_row    ( vkb_row_v ),
@@ -873,6 +888,13 @@ jr100_vkb_overlay vkb_overlay (
     .pressed    ( vkb_pressed_v ),
     .shift_held ( vkb_shift_v ),
     .ctl_held   ( vkb_ctl_v ),
+    .graph_mode ( vkb_graph_v ),
+
+    // shadow of the boot.rom character generator (first 1 KiB of the stream)
+    .crom_clk   ( clk_sys ),
+    .crom_wr    ( rom_wr && (rom_wr_addr[27:10] == 18'd0) ),
+    .crom_addr  ( rom_wr_addr[9:0] ),
+    .crom_data  ( rom_wr_data ),
 
     .hit        ( ovl_hit ),
     .rgb        ( ovl_rgb )
