@@ -86,15 +86,17 @@ module jr100_vkb_overlay (
     // ------------------------------------------------------------------
     // codes: 0 blank, 1-26 A-Z, 27-36 0-9, 37 ';' 38 ',' 39 '.' 40 ':' 41 '-',
     // 42 '!' 43 '"' 44 '#' 45 '$' 46 '%' 47 '&' 48 "'" 49 '(' 50 ')' 51 '*'
-    // 52 '+' 53 '<' 54 '>' 55 '='.
+    // 52 '+' 53 '<' 54 '>' 55 '=', 56 '@' 57 '^' 58 '[' 59 ']' 60 '?' 61 '/'
+    // 62 '_' 63 yen.
     //
-    // With SHIFT locked (or held) the labels switch to the JR-100 keycap
-    // shift legends: 1!-9) on the digits, ;+ :* ,< .> -=. Letters have no
-    // shift legend and stay as they are.
+    // With SHIFT locked (or held) the labels switch to the shift plane taken
+    // from the BASIC ROM's own key translation table (boot.rom 0x1A99):
+    // 1!-9) 0^ on the digits row, U@ I(yen) O[ P] K? L/ ;+ M_ ,< .> :* -=.
+    // Keys the ROM maps to nothing keep their letter.
     function automatic [5:0] label0(input [2:0] vr, input [3:0] vc,
                                     input shifted);
         case (vr)
-            3'd0: label0 = shifted ? ((vc == 4'd9) ? 6'd27          // 0
+            3'd0: label0 = shifted ? ((vc == 4'd9) ? 6'd57          // 0 -> ^
                                                    : (6'd42 + {2'd0, vc})) // !..)
                                    : ((vc == 4'd9) ? 6'd27
                                                    : (6'd28 + {2'd0, vc})); // 1..9
@@ -105,10 +107,10 @@ module jr100_vkb_overlay (
                 4'd3: label0 = 6'd18;  // R
                 4'd4: label0 = 6'd20;  // T
                 4'd5: label0 = 6'd25;  // Y
-                4'd6: label0 = 6'd21;  // U
-                4'd7: label0 = 6'd9;   // I
-                4'd8: label0 = 6'd15;  // O
-                default: label0 = 6'd16; // P
+                4'd6: label0 = shifted ? 6'd56 : 6'd21; // U  ->  @
+                4'd7: label0 = shifted ? 6'd63 : 6'd9;  // I  ->  yen
+                4'd8: label0 = shifted ? 6'd58 : 6'd15; // O  ->  [
+                default: label0 = shifted ? 6'd59 : 6'd16; // P  ->  ]
             endcase
             3'd2: case (vc)
                 4'd0: label0 = 6'd1;   // A
@@ -118,8 +120,8 @@ module jr100_vkb_overlay (
                 4'd4: label0 = 6'd7;   // G
                 4'd5: label0 = 6'd8;   // H
                 4'd6: label0 = 6'd10;  // J
-                4'd7: label0 = 6'd11;  // K
-                4'd8: label0 = 6'd12;  // L
+                4'd7: label0 = shifted ? 6'd60 : 6'd11; // K  ->  ?
+                4'd8: label0 = shifted ? 6'd61 : 6'd12; // L  ->  /
                 default: label0 = shifted ? 6'd52 : 6'd37; // ;  ->  +
             endcase
             default: case (vc)
@@ -129,7 +131,7 @@ module jr100_vkb_overlay (
                 4'd3: label0 = 6'd22;  // V
                 4'd4: label0 = 6'd2;   // B
                 4'd5: label0 = 6'd14;  // N
-                4'd6: label0 = 6'd13;  // M
+                4'd6: label0 = shifted ? 6'd62 : 6'd13; // M  ->  _
                 4'd7: label0 = shifted ? 6'd53 : 6'd38; // ,  ->  <
                 4'd8: label0 = shifted ? 6'd54 : 6'd39; // .  ->  >
                 default: label0 = shifted ? 6'd51 : 6'd40; // :  ->  *
